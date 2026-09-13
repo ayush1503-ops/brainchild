@@ -18,6 +18,13 @@ interface StudioContextType {
   setIsCmsOpen: (open: boolean) => void;
   isAudioActive: boolean;
   toggleAudio: () => void;
+
+  // Wishlist & playful toasts
+  wishlist: string[];
+  toggleWishlist: (gameId: string) => void;
+  isWishlisted: (gameId: string) => boolean;
+  toast: { id: number; text: string } | null;
+  notify: (text: string) => void;
   
   // CMS Collections & Mutations
   games: Game[];
@@ -55,6 +62,31 @@ export const StudioProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isApplyingJob, setIsApplyingJob] = useState(false);
   const [isCmsOpen, setIsCmsOpen] = useState(false);
   const [isAudioActive, setIsAudioActive] = useState(false);
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('bc_wishlist');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bc_wishlist', JSON.stringify(wishlist));
+    } catch { /* ignored */ }
+  }, [wishlist]);
+
+  const notify = (text: string) => {
+    const id = Date.now();
+    setToast({ id, text });
+    window.setTimeout(() => {
+      setToast((prev) => (prev && prev.id === id ? null : prev));
+    }, 3200);
+  };
+
+  const isWishlisted = (gameId: string) => wishlist.includes(gameId);
 
   // Persistent collections
   const [games, setGames] = useState<Game[]>(() => {
@@ -65,6 +97,18 @@ export const StudioProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return INITIAL_GAMES;
     }
   });
+
+  const toggleWishlist = (gameId: string) => {
+    setWishlist((prev) => {
+      const has = prev.includes(gameId);
+      const game = games.find((g) => g.id === gameId);
+      const label = game ? game.title : 'Game';
+      window.setTimeout(() => {
+        notify(has ? `${label} removed from your wishlist` : `${label} added to your wishlist ♥`);
+      }, 0);
+      return has ? prev.filter((id) => id !== gameId) : [...prev, gameId];
+    });
+  };
 
   const [news, setNews] = useState<Article[]>(() => {
     try {
@@ -319,6 +363,11 @@ export const StudioProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsCmsOpen,
         isAudioActive,
         toggleAudio,
+        wishlist,
+        toggleWishlist,
+        isWishlisted,
+        toast,
+        notify,
         games,
         addGame,
         updateGame,

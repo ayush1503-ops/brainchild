@@ -1,22 +1,16 @@
 import React, { useState } from 'react';
-import {
-  X,
-  Plus,
-  Trash2,
-  Edit2,
-  Download,
-  Check,
-  Gamepad2,
-  Newspaper,
-  Briefcase,
-  Users,
-  MessageSquare,
-  Sparkles,
-  Save,
-  AlertCircle
-} from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Download, Gamepad2, Newspaper, Briefcase, Users, MessageSquare, Save, Mail } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useStudio } from '../../context/StudioContext';
 import { Game, Article, Job } from '../../types';
+
+type Tab = 'games' | 'news' | 'jobs' | 'subscribers' | 'contacts';
+
+const inputCls =
+  'w-full rounded-xl border-2 border-ink/15 bg-cream px-3.5 py-2.5 text-sm font-semibold text-ink placeholder-inksoft/60 focus:border-grape focus:outline-none';
+const labelCls = 'text-[10px] font-extrabold uppercase tracking-widest text-inksoft';
+const btnSmall =
+  'inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-cream px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-ink transition-all hover:-translate-y-0.5 hover:bg-sun cursor-pointer';
 
 export const StudioCMSModal: React.FC = () => {
   const {
@@ -35,823 +29,489 @@ export const StudioCMSModal: React.FC = () => {
     updateJob,
     deleteJob,
     subscribers,
-    contacts,
     exportSubscribersCSV,
-    exportSubscribersJSON
+    exportSubscribersJSON,
+    contactMessages,
+    markContactStatus,
+    notify
   } = useStudio();
 
-  const [activeTab, setActiveTab] = useState<'games' | 'news' | 'jobs' | 'subscribers' | 'contacts'>('games');
-
-  // Form states for creating/editing
+  const [tab, setTab] = useState<Tab>('games');
   const [editingGame, setEditingGame] = useState<Partial<Game> | null>(null);
   const [editingArticle, setEditingArticle] = useState<Partial<Article> | null>(null);
   const [editingJob, setEditingJob] = useState<Partial<Job> | null>(null);
 
   if (!isCmsOpen) return null;
 
-  // Handler for Game Save
-  const handleSaveGame = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingGame || !editingGame.title) return;
+  const close = () => setIsCmsOpen(false);
 
+  /* ---------- games ---------- */
+  const saveGame = () => {
+    if (!editingGame?.title) return;
     if (editingGame.id) {
-      updateGame(editingGame.id, editingGame);
+      updateGame({ ...(games.find((g) => g.id === editingGame.id) as Game), ...editingGame } as Game);
+      notify('Game updated in the shelf ✓');
     } else {
-      const newGame: Game = {
-        id: `game-${Date.now()}`,
-        title: editingGame.title || 'Untitled Game',
-        slug: (editingGame.title || 'game').toLowerCase().replace(/\s+/g, '-'),
-        subtitle: editingGame.subtitle || 'ANOMALOUS EXPLORATION',
-        genre: editingGame.genre || 'Sci-Fi Adventure',
-        platforms: editingGame.platforms || ['PC (Steam)', 'PlayStation 5'],
-        status: editingGame.status || 'In Development',
-        releaseYear: editingGame.releaseYear || '2026',
-        description: editingGame.description || '',
-        longDescription: editingGame.longDescription || '',
-        heroImage: editingGame.heroImage || '/src/assets/images/hero_game_1789202802877.jpg',
-        screenshots: editingGame.screenshots || ['/src/assets/images/hero_game_1789202802877.jpg'],
-        videoUrl: editingGame.videoUrl || '',
-        tags: editingGame.tags || ['Sci-Fi', 'Exploration'],
-        storeLinks: [{ name: 'Steam', url: 'https://store.steampowered.com' }],
-        features: editingGame.features || ['Kinetic zero-g physics', 'Volumetric weather simulation'],
-        gameplayMechanics: editingGame.gameplayMechanics || [
-          { title: 'Horizon Anchor', description: 'Magnetically tether yourself to planetary fragments.' }
-        ],
-        devStory: editingGame.devStory || 'Prototyped over 18 months in Montreal.',
-        featured: !!editingGame.featured
-      };
-      addGame(newGame);
+      const base = games[0];
+      addGame({
+        slug: editingGame.title.toLowerCase().replace(/\s+/g, '-'),
+        subtitle: editingGame.subtitle || 'A New World',
+        genre: editingGame.genre || 'Indie Adventure',
+        categories: editingGame.categories ?? ['Indie'],
+        rating: editingGame.rating ?? 4.5,
+        price: editingGame.price ?? 'Wishlist free',
+        platforms: editingGame.platforms ?? ['PC (Steam)'],
+        status: editingGame.status ?? 'In Development',
+        releaseYear: editingGame.releaseYear ?? '2027',
+        description: editingGame.description || 'A brand new world, fresh from the jam room.',
+        longDescription: editingGame.longDescription || editingGame.description || 'A brand new world.',
+        heroImage: editingGame.heroImage || base?.heroImage || '/src/assets/images/art_week_wide.jpg',
+        screenshots: editingGame.screenshots ?? [editingGame.heroImage || base?.heroImage || '/src/assets/images/art_week_wide.jpg'],
+        tags: editingGame.tags ?? ['New'],
+        features: editingGame.features ?? ['Secret mechanics, TBD'],
+        gameplayMechanics: editingGame.gameplayMechanics ?? [{ title: 'TBD', description: 'Prototyping in the jam room.' }],
+        devStory: editingGame.devStory || 'Born in a jam week.',
+        storeLinks: editingGame.storeLinks ?? [{ name: 'Steam', url: '#steam', badge: 'Wishlist' }],
+        title: editingGame.title,
+        featured: editingGame.featured ?? false
+      });
+      notify('New world added to the shelf 🎉');
     }
     setEditingGame(null);
   };
 
-  // Handler for Article Save
-  const handleSaveArticle = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingArticle || !editingArticle.title) return;
-
+  /* ---------- news ---------- */
+  const saveArticle = () => {
+    if (!editingArticle?.title) return;
     if (editingArticle.id) {
-      updateArticle(editingArticle.id, editingArticle);
+      updateArticle({ ...(news.find((a) => a.id === editingArticle.id) as Article), ...editingArticle } as Article);
+      notify('Story updated ✓');
     } else {
-      const newArt: Article = {
-        id: `art-${Date.now()}`,
-        title: editingArticle.title || 'New Dispatch',
-        slug: (editingArticle.title || 'article').toLowerCase().replace(/\s+/g, '-'),
-        date: new Date().toISOString().split('T')[0],
-        category: (editingArticle.category as any) || 'DEVLOG',
-        readTime: editingArticle.readTime || '4 MIN READ',
-        author: editingArticle.author || { name: 'Studio Lead', role: 'Director' },
-        coverImage: editingArticle.coverImage || '/src/assets/images/hero_game_1789202802877.jpg',
+      addArticle({
+        slug: editingArticle.title.toLowerCase().replace(/\s+/g, '-'),
+        category: editingArticle.category ?? 'NEWS',
+        date: editingArticle.date ?? 'SEPTEMBER 2026',
+        readTime: editingArticle.readTime ?? '3 MIN READ',
         excerpt: editingArticle.excerpt || '',
-        content: editingArticle.content || '',
-        tags: editingArticle.tags || ['Devlog', 'Engine'],
-        featured: !!editingArticle.featured,
-        published: true
-      };
-      addArticle(newArt);
+        content: editingArticle.content || editingArticle.excerpt || '',
+        coverImage: editingArticle.coverImage || '/src/assets/images/art_studio.jpg',
+        author: editingArticle.author ?? { name: 'Studio Bot', role: 'Editor' },
+        tags: editingArticle.tags ?? ['Studio'],
+        title: editingArticle.title,
+        featured: editingArticle.featured ?? false,
+        published: editingArticle.published ?? true
+      });
+      notify('Story published 📰');
     }
     setEditingArticle(null);
   };
 
-  // Handler for Job Save
-  const handleSaveJob = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingJob || !editingJob.title) return;
-
+  /* ---------- jobs ---------- */
+  const saveJob = () => {
+    if (!editingJob?.title) return;
     if (editingJob.id) {
-      updateJob(editingJob.id, editingJob);
+      updateJob({ ...(jobs.find((j) => j.id === editingJob.id) as Job), ...editingJob } as Job);
+      notify('Role updated ✓');
     } else {
-      const newJobItem: Job = {
-        id: `job-${Date.now()}`,
-        title: editingJob.title || 'Senior Role',
-        department: editingJob.department || 'Engineering',
-        location: editingJob.location || 'Montreal / Remote',
-        type: (editingJob.type as any) || 'Full-time (4-Day Week)',
-        experience: (editingJob.experience as any) || 'Senior',
-        description: editingJob.description || '',
-        responsibilities: editingJob.responsibilities || ['Own technical gameplay systems.'],
-        requirements: editingJob.requirements || ['5+ years in commercial game development.'],
-        niceToHave: ['Experience shipping on modern consoles', 'Custom physics experience'],
-        perks: ['4-day work week (36h)', '15% Studio revenue share pool'],
-        status: 'open',
-        postedDate: 'Just Now'
-      };
-      addJob(newJobItem);
+      addJob({
+        department: editingJob.department ?? 'Engineering',
+        location: editingJob.location ?? 'Montreal / Remote',
+        type: editingJob.type ?? 'Full-time',
+        experience: editingJob.experience ?? 'Senior',
+        description: editingJob.description || 'Come build worlds with us.',
+        responsibilities: editingJob.responsibilities ?? ['Make excellent things'],
+        requirements: editingJob.requirements ?? ['Be curious and kind'],
+        niceToHave: editingJob.niceToHave ?? [],
+        perks: editingJob.perks ?? ['4-day work week', 'Profit sharing'],
+        status: editingJob.status ?? 'open',
+        postedDate: editingJob.postedDate ?? 'SEPTEMBER 2026',
+        title: editingJob.title
+      });
+      notify('New role posted 💼');
     }
     setEditingJob(null);
   };
 
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; count: number }[] = [
+    { id: 'games', label: 'Games', icon: <Gamepad2 size={14} />, count: games.length },
+    { id: 'news', label: 'News', icon: <Newspaper size={14} />, count: news.length },
+    { id: 'jobs', label: 'Jobs', icon: <Briefcase size={14} />, count: jobs.length },
+    { id: 'subscribers', label: 'Subscribers', icon: <Users size={14} />, count: subscribers.length },
+    { id: 'contacts', label: 'Inbox', icon: <MessageSquare size={14} />, count: contactMessages.length }
+  ];
+
   return (
-    <div
-      id="studio-cms-modal"
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/90 backdrop-blur-xl flex items-center justify-center p-3 sm:p-6 lg:p-8 animate-in fade-in duration-200 text-white"
-    >
-      <div className="relative w-full max-w-6xl max-h-[90vh] rounded-3xl bg-[#0f1118] border border-white/20 shadow-2xl flex flex-col overflow-hidden">
-        {/* Modal Topbar */}
-        <div className="p-6 border-b border-white/10 flex items-center justify-between bg-[#141724]">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#ff5722] flex items-center justify-center font-black text-black">
-              BC
-            </div>
-            <div>
-              <h2 className="text-lg font-display font-black uppercase tracking-tight">
-                STUDIO CMS & TELEMETRY
-              </h2>
-              <div className="text-[10px] font-mono text-zinc-400">
-                BRAINCHILD CONTENT ENGINE // FULL EDITORIAL CONTROL
-              </div>
+    <div className="fixed inset-0 z-[75] overflow-y-auto bg-ink/50 p-2 backdrop-blur-sm sm:p-6" onClick={close}>
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+        onClick={(e) => e.stopPropagation()}
+        className="mx-auto my-auto w-full max-w-5xl overflow-hidden rounded-[28px] border-2 border-ink bg-paper shadow-lift"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b-2 border-ink bg-sun px-6 py-4">
+          <div>
+            <div className="font-display text-lg font-extrabold uppercase tracking-tight text-ink">Studio CMS</div>
+            <div className="text-[10px] font-extrabold uppercase tracking-widest text-ink/60">
+              Content manager · edits save to this browser
             </div>
           </div>
-
           <button
-            onClick={() => setIsCmsOpen(false)}
-            className="p-2.5 rounded-full bg-white/10 hover:bg-[#ff5722] transition-colors cursor-pointer"
+            onClick={close}
+            className="grid h-10 w-10 place-items-center rounded-full border-2 border-ink bg-cream text-ink shadow-sticker-sm transition-all hover:bg-coral hover:text-white cursor-pointer"
+            aria-label="Close CMS"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 px-6 pt-4 border-b border-white/10 bg-[#12141e] overflow-x-auto">
-          <button
-            onClick={() => {
-              setActiveTab('games');
-              setEditingGame(null);
-            }}
-            className={`px-4 py-2.5 text-xs font-editorial font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'games'
-                ? 'border-[#ff5722] text-[#ff5722]'
-                : 'border-transparent text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Gamepad2 size={14} />
-            <span>GAMES ({games.length})</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('news');
-              setEditingArticle(null);
-            }}
-            className={`px-4 py-2.5 text-xs font-editorial font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'news'
-                ? 'border-[#ff5722] text-[#ff5722]'
-                : 'border-transparent text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Newspaper size={14} />
-            <span>ARTICLES & DEVLOGS ({news.length})</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('jobs');
-              setEditingJob(null);
-            }}
-            className={`px-4 py-2.5 text-xs font-editorial font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'jobs'
-                ? 'border-[#ff5722] text-[#ff5722]'
-                : 'border-transparent text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Briefcase size={14} />
-            <span>CAREERS & VACANCIES ({jobs.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('subscribers')}
-            className={`px-4 py-2.5 text-xs font-editorial font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'subscribers'
-                ? 'border-[#ff5722] text-[#ff5722]'
-                : 'border-transparent text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Users size={14} />
-            <span>SUBSCRIBERS ({subscribers.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('contacts')}
-            className={`px-4 py-2.5 text-xs font-editorial font-bold uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'contacts'
-                ? 'border-[#ff5722] text-[#ff5722]'
-                : 'border-transparent text-zinc-400 hover:text-white'
-            }`}
-          >
-            <MessageSquare size={14} />
-            <span>CONTACT INBOX ({contacts.length})</span>
-          </button>
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-2 border-b-2 border-ink/10 bg-cream px-6 py-4">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`inline-flex items-center gap-2 rounded-full border-2 border-ink px-4 py-2 text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                tab === t.id ? '-rotate-1 bg-grape text-white shadow-sticker-sm' : 'bg-paper text-inksoft hover:text-ink'
+              }`}
+            >
+              {t.icon} {t.label}
+              <span className="rounded-full bg-ink/10 px-1.5 text-[10px]">{t.count}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Tab Contents */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          {/* TAB 1: GAMES */}
-          {activeTab === 'games' && (
-            <div>
-              {editingGame ? (
-                <form onSubmit={handleSaveGame} className="space-y-4 max-w-2xl">
-                  <h3 className="text-lg font-display font-bold text-white">
-                    {editingGame.id ? 'EDIT GAME ENTRY' : 'ADD NEW EXPERIMENTAL WORLD'}
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">GAME TITLE</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingGame.title || ''}
-                        onChange={(e) => setEditingGame({ ...editingGame, title: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">SUBTITLE / TAGLINE</label>
-                      <input
-                        type="text"
-                        value={editingGame.subtitle || ''}
-                        onChange={(e) => setEditingGame({ ...editingGame, subtitle: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">GENRE</label>
-                      <input
-                        type="text"
-                        value={editingGame.genre || ''}
-                        onChange={(e) => setEditingGame({ ...editingGame, genre: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">STATUS</label>
-                      <select
-                        value={editingGame.status || 'In Development'}
-                        onChange={(e) => setEditingGame({ ...editingGame, status: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      >
-                        <option value="Available Now">Available Now</option>
-                        <option value="Wishlist Now">Wishlist Now</option>
-                        <option value="In Development">In Development</option>
-                        <option value="Alpha Testing">Alpha Testing</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">RELEASE YEAR</label>
-                      <input
-                        type="text"
-                        value={editingGame.releaseYear || ''}
-                        onChange={(e) => setEditingGame({ ...editingGame, releaseYear: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono text-zinc-400">SHORT DESCRIPTION</label>
-                    <textarea
-                      rows={2}
-                      value={editingGame.description || ''}
-                      onChange={(e) => setEditingGame({ ...editingGame, description: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono text-zinc-400">LONG SYNOPSIS</label>
-                    <textarea
-                      rows={4}
-                      value={editingGame.longDescription || ''}
-                      onChange={(e) => setEditingGame({ ...editingGame, longDescription: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingGame(null)}
-                      className="px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-xs font-editorial uppercase"
-                    >
-                      CANCEL
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-6 py-2 rounded-full bg-[#ff5722] hover:bg-[#f04814] text-xs font-editorial font-bold uppercase"
-                    >
-                      SAVE TO CATALOGUE
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-mono text-zinc-400 uppercase">
-                      STUDIO CATALOGUE ({games.length} WORLDS)
-                    </h3>
-                    <button
-                      onClick={() =>
-                        setEditingGame({
-                          title: '',
-                          subtitle: '',
-                          genre: 'Sci-Fi Exploration',
-                          status: 'In Development',
-                          releaseYear: '2026',
-                          description: '',
-                          longDescription: '',
-                          heroImage: '/src/assets/images/hero_game_1789202802877.jpg',
-                          screenshots: ['/src/assets/images/hero_game_1789202802877.jpg'],
-                          features: ['Procedural Gravitational Shifts'],
-                          platforms: ['PC (Steam)', 'PlayStation 5']
-                        })
-                      }
-                      className="px-4 py-2 rounded-full bg-[#ff5722] text-white text-xs font-editorial font-bold uppercase flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Plus size={14} />
-                      <span>ADD NEW GAME</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {games.map((game) => (
-                      <div
-                        key={game.id}
-                        className="p-4 rounded-2xl bg-[#141624] border border-white/10 flex items-center justify-between gap-4"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={game.heroImage}
-                            alt=""
-                            className="w-14 h-14 rounded-xl object-cover shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="min-w-0">
-                            <h4 className="text-sm font-display font-bold text-white truncate">
-                              {game.title}
-                            </h4>
-                            <div className="text-[11px] font-mono text-[#ff5722]">
-                              {game.genre} • {game.status}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => setEditingGame(game)}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-zinc-300"
-                            title="Edit"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete ${game.title}?`)) deleteGame(game.id);
-                            }}
-                            className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 2: ARTICLES */}
-          {activeTab === 'news' && (
-            <div>
-              {editingArticle ? (
-                <form onSubmit={handleSaveArticle} className="space-y-4 max-w-2xl">
-                  <h3 className="text-lg font-display font-bold text-white">
-                    {editingArticle.id ? 'EDIT DISPATCH' : 'WRITE NEW DISPATCH / DEVLOG'}
-                  </h3>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono text-zinc-400">ARTICLE TITLE</label>
-                    <input
-                      type="text"
-                      required
-                      value={editingArticle.title || ''}
-                      onChange={(e) => setEditingArticle({ ...editingArticle, title: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">CATEGORY</label>
-                      <select
-                        value={editingArticle.category || 'DEVLOG'}
-                        onChange={(e) => setEditingArticle({ ...editingArticle, category: e.target.value as any })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      >
-                        <option value="DEVLOG">DEVLOG</option>
-                        <option value="BEHIND THE SCENES">BEHIND THE SCENES</option>
-                        <option value="ANNOUNCEMENT">ANNOUNCEMENT</option>
-                        <option value="STUDIO">STUDIO</option>
-                        <option value="NEWS">NEWS</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">ESTIMATED READ TIME</label>
-                      <input
-                        type="text"
-                        value={editingArticle.readTime || '4 MIN READ'}
-                        onChange={(e) => setEditingArticle({ ...editingArticle, readTime: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono text-zinc-400">SHORT EXCERPT</label>
-                    <textarea
-                      rows={2}
-                      value={editingArticle.excerpt || ''}
-                      onChange={(e) => setEditingArticle({ ...editingArticle, excerpt: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono text-zinc-400">MARKDOWN CONTENT</label>
-                    <textarea
-                      rows={6}
-                      value={editingArticle.content || ''}
-                      onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs font-mono"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingArticle(null)}
-                      className="px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-xs font-editorial uppercase"
-                    >
-                      CANCEL
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-6 py-2 rounded-full bg-[#ff5722] hover:bg-[#f04814] text-xs font-editorial font-bold uppercase"
-                    >
-                      PUBLISH DISPATCH
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-mono text-zinc-400 uppercase">
-                      NEWS ARTICLES ({news.length})
-                    </h3>
-                    <button
-                      onClick={() =>
-                        setEditingArticle({
-                          title: '',
-                          category: 'DEVLOG',
-                          readTime: '5 MIN READ',
-                          excerpt: '',
-                          content: '### New Chapter\n\nWrite your thoughts here...',
-                          coverImage: '/src/assets/images/hero_game_1789202802877.jpg',
-                          author: { name: 'Studio Writer', role: 'Editorial' }
-                        })
-                      }
-                      className="px-4 py-2 rounded-full bg-[#ff5722] text-white text-xs font-editorial font-bold uppercase flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Plus size={14} />
-                      <span>NEW ARTICLE</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {news.map((art) => (
-                      <div
-                        key={art.id}
-                        className="p-4 rounded-2xl bg-[#141624] border border-white/10 flex items-center justify-between gap-4"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-mono text-[#ff5722]">
-                            {art.category} • {art.date}
-                          </div>
-                          <h4 className="text-sm font-display font-bold text-white truncate">
-                            {art.title}
-                          </h4>
-                          <div className="text-xs text-zinc-400 truncate font-sans">{art.excerpt}</div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => setEditingArticle(art)}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-zinc-300"
-                            title="Edit"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete "${art.title}"?`)) deleteArticle(art.id);
-                            }}
-                            className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 3: JOBS */}
-          {activeTab === 'jobs' && (
-            <div>
-              {editingJob ? (
-                <form onSubmit={handleSaveJob} className="space-y-4 max-w-2xl">
-                  <h3 className="text-lg font-display font-bold text-white">
-                    {editingJob.id ? 'EDIT VACANCY' : 'POST NEW EXPEDITION VACANCY'}
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">ROLE TITLE</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingJob.title || ''}
-                        onChange={(e) => setEditingJob({ ...editingJob, title: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">DEPARTMENT</label>
-                      <input
-                        type="text"
-                        value={editingJob.department || 'Engineering'}
-                        onChange={(e) => setEditingJob({ ...editingJob, department: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">LOCATION</label>
-                      <input
-                        type="text"
-                        value={editingJob.location || 'Montreal / Remote'}
-                        onChange={(e) => setEditingJob({ ...editingJob, location: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">EXPERIENCE</label>
-                      <input
-                        type="text"
-                        value={editingJob.experience || 'Senior'}
-                        onChange={(e) => setEditingJob({ ...editingJob, experience: e.target.value as any })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-mono text-zinc-400">STATUS</label>
-                      <select
-                        value={editingJob.status || 'open'}
-                        onChange={(e) => setEditingJob({ ...editingJob, status: e.target.value as any })}
-                        className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                      >
-                        <option value="open">Open</option>
-                        <option value="closed">Closed</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono text-zinc-400">JOB DESCRIPTION</label>
-                    <textarea
-                      rows={3}
-                      value={editingJob.description || ''}
-                      onChange={(e) => setEditingJob({ ...editingJob, description: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-white/10 rounded-lg text-xs"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingJob(null)}
-                      className="px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-xs font-editorial uppercase"
-                    >
-                      CANCEL
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-6 py-2 rounded-full bg-[#ff5722] hover:bg-[#f04814] text-xs font-editorial font-bold uppercase"
-                    >
-                      SAVE VACANCY
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-mono text-zinc-400 uppercase">
-                      POSTED ROLES ({jobs.length})
-                    </h3>
-                    <button
-                      onClick={() =>
-                        setEditingJob({
-                          title: '',
-                          department: 'Engineering',
-                          location: 'Montreal / Remote',
-                          type: 'Full-time (4-Day Week)',
-                          experience: 'Senior',
-                          description: '',
-                          status: 'open',
-                          responsibilities: ['Architect systems'],
-                          requirements: ['Experience with C++ / Unreal'],
-                          perks: ['4-day week', 'Profit pool']
-                        })
-                      }
-                      className="px-4 py-2 rounded-full bg-[#ff5722] text-white text-xs font-editorial font-bold uppercase flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Plus size={14} />
-                      <span>POST ROLE</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {jobs.map((job) => (
-                      <div
-                        key={job.id}
-                        className="p-4 rounded-2xl bg-[#141624] border border-white/10 flex items-center justify-between gap-4"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-[11px] font-mono">
-                            <span className="text-[#ff5722]">{job.department}</span>
-                            <span className="text-zinc-500">•</span>
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] ${
-                                job.status === 'open' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
-                              }`}
-                            >
-                              {job.status.toUpperCase()}
-                            </span>
-                          </div>
-                          <h4 className="text-sm font-display font-bold text-white truncate">
-                            {job.title}
-                          </h4>
-                          <div className="text-xs text-zinc-400 font-sans">{job.location}</div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => setEditingJob(job)}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-zinc-300"
-                            title="Edit"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete "${job.title}"?`)) deleteJob(job.id);
-                            }}
-                            className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 4: SUBSCRIBERS */}
-          {activeTab === 'subscribers' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-mono text-zinc-400 uppercase">
-                    NEWSLETTER REGISTERED CONTACTS ({subscribers.length})
-                  </h3>
-                  <p className="text-xs text-zinc-500 font-sans">
-                    Player email frequencies registered from drops and footer signup.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={exportSubscribersCSV}
-                    className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-xs font-editorial uppercase flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Download size={13} />
-                    <span>EXPORT CSV</span>
-                  </button>
-                  <button
-                    onClick={exportSubscribersJSON}
-                    className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-xs font-editorial uppercase flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Download size={13} />
-                    <span>EXPORT JSON</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 overflow-hidden">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-[#141624] text-zinc-400 border-b border-white/10">
-                    <tr>
-                      <th className="p-3">NAME</th>
-                      <th className="p-3">EMAIL FREQUENCY</th>
-                      <th className="p-3">CHANNELS</th>
-                      <th className="p-3">DATE REGISTERED</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 bg-[#0e1017]">
-                    {subscribers.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-white/5">
-                        <td className="p-3 text-white font-sans">{sub.name || 'Anonymous Pilot'}</td>
-                        <td className="p-3 text-[#22d3ee]">{sub.email}</td>
-                        <td className="p-3 text-zinc-400">
-                          {sub.interests?.join(', ') || 'All Drops'}
-                        </td>
-                        <td className="p-3 text-zinc-500">{sub.subscribedAt}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: CONTACT INBOX */}
-          {activeTab === 'contacts' && (
+        <div className="max-h-[65vh] overflow-y-auto p-6">
+          {/* ------------ GAMES ------------ */}
+          {tab === 'games' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-mono text-zinc-400 uppercase">
-                    STUDIO INBOX ({contacts.length} TRANSMISSIONS)
-                  </h3>
-                  <p className="text-xs text-zinc-500 font-sans">
-                    Direct communications sent via the contact terminal.
-                  </p>
-                </div>
+              <div className="flex justify-end">
+                <button onClick={() => setEditingGame({})} className={btnSmall}>
+                  <Plus size={13} /> New game
+                </button>
               </div>
 
-              <div className="space-y-3">
-                {contacts.map((c) => (
-                  <div
-                    key={c.id}
-                    className="p-5 rounded-2xl bg-[#141624] border border-white/10 space-y-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2 text-xs">
-                      <div className="flex items-center gap-2 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-[#ff5722]/20 text-[#ff5722] font-bold">
-                          {c.category}
-                        </span>
-                        <span className="text-white font-bold">{c.name}</span>
-                        <span className="text-zinc-500">({c.email})</span>
-                        {c.company && (
-                          <span className="text-[#22d3ee]">@ {c.company}</span>
-                        )}
-                      </div>
-                      <span className="text-zinc-500 font-mono text-[11px]">{c.createdAt}</span>
+              {editingGame && (
+                <div className="space-y-3 rounded-2xl border-2 border-ink bg-cream p-5 shadow-sticker-sm">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className={labelCls}>Title *</label>
+                      <input className={inputCls} value={editingGame.title || ''} onChange={(e) => setEditingGame({ ...editingGame, title: e.target.value })} placeholder="SKYFORGE" />
                     </div>
-
-                    <div className="text-sm font-display font-bold text-white">
-                      {c.subject}
+                    <div className="space-y-1">
+                      <label className={labelCls}>Subtitle</label>
+                      <input className={inputCls} value={editingGame.subtitle || ''} onChange={(e) => setEditingGame({ ...editingGame, subtitle: e.target.value })} />
                     </div>
-
-                    <p className="text-xs text-zinc-300 font-sans leading-relaxed whitespace-pre-wrap">
-                      {c.message}
-                    </p>
-
-                    {c.budget && (
-                      <div className="text-[11px] font-mono text-[#fbbf24]">
-                        ESTIMATED BUDGET: {c.budget}
-                      </div>
-                    )}
+                    <div className="space-y-1">
+                      <label className={labelCls}>Genre</label>
+                      <input className={inputCls} value={editingGame.genre || ''} onChange={(e) => setEditingGame({ ...editingGame, genre: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Status</label>
+                      <select className={inputCls} value={editingGame.status || 'In Development'} onChange={(e) => setEditingGame({ ...editingGame, status: e.target.value as Game['status'] })}>
+                        {['In Development', 'Early Access', 'Wishlist Now', 'Available Now'].map((s) => (
+                          <option key={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Release window</label>
+                      <input className={inputCls} value={editingGame.releaseYear || ''} onChange={(e) => setEditingGame({ ...editingGame, releaseYear: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Price label</label>
+                      <input className={inputCls} value={editingGame.price || ''} onChange={(e) => setEditingGame({ ...editingGame, price: e.target.value })} placeholder="$24.99 / Wishlist free" />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Hero image path</label>
+                      <input className={inputCls} value={editingGame.heroImage || ''} onChange={(e) => setEditingGame({ ...editingGame, heroImage: e.target.value })} placeholder="/src/assets/images/art_week_wide.jpg" />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Short description</label>
+                      <textarea className={inputCls} rows={2} value={editingGame.description || ''} onChange={(e) => setEditingGame({ ...editingGame, description: e.target.value })} />
+                    </div>
                   </div>
-                ))}
+                  <label className="flex items-center gap-2 text-xs font-bold text-ink">
+                    <input type="checkbox" checked={!!editingGame.featured} onChange={(e) => setEditingGame({ ...editingGame, featured: e.target.checked })} />
+                    Feature on homepage
+                  </label>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={saveGame} className="inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-coral px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-sticker-sm cursor-pointer">
+                      <Save size={13} /> Save
+                    </button>
+                    <button onClick={() => setEditingGame(null)} className={btnSmall}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {games.map((g) => (
+                <div key={g.id} className="flex items-center gap-4 rounded-2xl border-2 border-ink/10 bg-cream p-3">
+                  <img src={g.heroImage} alt="" className="h-14 w-20 rounded-xl border-2 border-ink/10 object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-sm font-extrabold uppercase text-ink">{g.title}</div>
+                    <div className="truncate text-xs font-semibold text-inksoft">
+                      {g.genre} · {g.status} · {g.releaseYear}
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingGame(g)} className={btnSmall} aria-label={`Edit ${g.title}`}>
+                    <Edit2 size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete ${g.title} from the shelf?`)) deleteGame(g.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-cream px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-coral transition-all hover:-translate-y-0.5 hover:bg-coral hover:text-white cursor-pointer"
+                    aria-label={`Delete ${g.title}`}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ------------ NEWS ------------ */}
+          {tab === 'news' && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <button onClick={() => setEditingArticle({})} className={btnSmall}>
+                  <Plus size={13} /> New story
+                </button>
               </div>
+
+              {editingArticle && (
+                <div className="space-y-3 rounded-2xl border-2 border-ink bg-cream p-5 shadow-sticker-sm">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Title *</label>
+                      <input className={inputCls} value={editingArticle.title || ''} onChange={(e) => setEditingArticle({ ...editingArticle, title: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Category</label>
+                      <select className={inputCls} value={editingArticle.category || 'NEWS'} onChange={(e) => setEditingArticle({ ...editingArticle, category: e.target.value as Article['category'] })}>
+                        {['NEWS', 'DEVLOG', 'BEHIND THE SCENES', 'ANNOUNCEMENT', 'STUDIO', 'COMMUNITY'].map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Date</label>
+                      <input className={inputCls} value={editingArticle.date || ''} onChange={(e) => setEditingArticle({ ...editingArticle, date: e.target.value })} placeholder="SEPTEMBER 2026" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Read time</label>
+                      <input className={inputCls} value={editingArticle.readTime || ''} onChange={(e) => setEditingArticle({ ...editingArticle, readTime: e.target.value })} placeholder="4 MIN READ" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Author name</label>
+                      <input className={inputCls} value={editingArticle.author?.name || ''} onChange={(e) => setEditingArticle({ ...editingArticle, author: { name: e.target.value, role: editingArticle.author?.role || 'Studio' } })} />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Cover image path</label>
+                      <input className={inputCls} value={editingArticle.coverImage || ''} onChange={(e) => setEditingArticle({ ...editingArticle, coverImage: e.target.value })} />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Excerpt</label>
+                      <textarea className={inputCls} rows={2} value={editingArticle.excerpt || ''} onChange={(e) => setEditingArticle({ ...editingArticle, excerpt: e.target.value })} />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Body (blank line = new paragraph, ### = heading)</label>
+                      <textarea className={inputCls} rows={5} value={editingArticle.content || ''} onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveArticle} className="inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-coral px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-sticker-sm cursor-pointer">
+                      <Save size={13} /> Save
+                    </button>
+                    <button onClick={() => setEditingArticle(null)} className={btnSmall}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {news.map((a) => (
+                <div key={a.id} className="flex items-center gap-4 rounded-2xl border-2 border-ink/10 bg-cream p-3">
+                  <img src={a.coverImage} alt="" className="h-14 w-20 rounded-xl border-2 border-ink/10 object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-extrabold text-ink">{a.title}</div>
+                    <div className="text-xs font-semibold text-inksoft">
+                      {a.category} · {a.date} · {a.published ? 'published' : 'draft'}
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingArticle(a)} className={btnSmall}>
+                    <Edit2 size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Delete this story?')) deleteArticle(a.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-cream px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-coral transition-all hover:-translate-y-0.5 hover:bg-coral hover:text-white cursor-pointer"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ------------ JOBS ------------ */}
+          {tab === 'jobs' && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <button onClick={() => setEditingJob({})} className={btnSmall}>
+                  <Plus size={13} /> New role
+                </button>
+              </div>
+
+              {editingJob && (
+                <div className="space-y-3 rounded-2xl border-2 border-ink bg-cream p-5 shadow-sticker-sm">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Role title *</label>
+                      <input className={inputCls} value={editingJob.title || ''} onChange={(e) => setEditingJob({ ...editingJob, title: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Department</label>
+                      <select className={inputCls} value={editingJob.department || 'Engineering'} onChange={(e) => setEditingJob({ ...editingJob, department: e.target.value as Job['department'] })}>
+                        {['Engineering', 'Art & Animation', 'Game Design', 'Production', 'Audio', 'Community'].map((d) => (
+                          <option key={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Experience</label>
+                      <select className={inputCls} value={editingJob.experience || 'Senior'} onChange={(e) => setEditingJob({ ...editingJob, experience: e.target.value as Job['experience'] })}>
+                        {['Mid', 'Senior', 'Lead', 'Director'].map((d) => (
+                          <option key={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Location</label>
+                      <input className={inputCls} value={editingJob.location || ''} onChange={(e) => setEditingJob({ ...editingJob, location: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelCls}>Status</label>
+                      <select className={inputCls} value={editingJob.status || 'open'} onChange={(e) => setEditingJob({ ...editingJob, status: e.target.value as Job['status'] })}>
+                        <option value="open">open</option>
+                        <option value="closed">closed</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className={labelCls}>Description</label>
+                      <textarea className={inputCls} rows={2} value={editingJob.description || ''} onChange={(e) => setEditingJob({ ...editingJob, description: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveJob} className="inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-coral px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-sticker-sm cursor-pointer">
+                      <Save size={13} /> Save
+                    </button>
+                    <button onClick={() => setEditingJob(null)} className={btnSmall}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {jobs.map((j) => (
+                <div key={j.id} className="flex items-center gap-4 rounded-2xl border-2 border-ink/10 bg-cream p-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-extrabold text-ink">{j.title}</div>
+                    <div className="text-xs font-semibold text-inksoft">
+                      {j.department} · {j.experience} · {j.status}
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingJob(j)} className={btnSmall}>
+                    <Edit2 size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Delete this role?')) deleteJob(j.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-cream px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-coral transition-all hover:-translate-y-0.5 hover:bg-coral hover:text-white cursor-pointer"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ------------ SUBSCRIBERS ------------ */}
+          {tab === 'subscribers' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap justify-end gap-2">
+                <button onClick={exportSubscribersCSV} className={btnSmall}>
+                  <Download size={13} /> CSV
+                </button>
+                <button onClick={exportSubscribersJSON} className={btnSmall}>
+                  <Download size={13} /> JSON
+                </button>
+              </div>
+              {subscribers.length === 0 && (
+                <p className="rounded-2xl border-2 border-dashed border-ink/20 bg-cream/60 p-8 text-center text-sm font-semibold text-inksoft">
+                  No subscribers yet — the drop form is waiting.
+                </p>
+              )}
+              {subscribers.map((s) => (
+                <div key={s.id} className="flex flex-col gap-1 rounded-2xl border-2 border-ink/10 bg-cream p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-extrabold text-ink">{s.name}</div>
+                    <div className="text-xs font-semibold text-inksoft">{s.email}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-2 sm:pt-0">
+                    {s.interests.map((i) => (
+                      <span key={i} className="rounded-full bg-grape/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-grape">
+                        {i}
+                      </span>
+                    ))}
+                    <span className="rounded-full bg-sand px-2.5 py-0.5 text-[10px] font-bold text-inksoft">{s.subscribedAt}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ------------ CONTACTS ------------ */}
+          {tab === 'contacts' && (
+            <div className="space-y-4">
+              {contactMessages.length === 0 && (
+                <p className="rounded-2xl border-2 border-dashed border-ink/20 bg-cream/60 p-8 text-center text-sm font-semibold text-inksoft">
+                  Inbox zero. Suspicious. Enjoy it.
+                </p>
+              )}
+              {contactMessages.map((m) => (
+                <div key={m.id} className="space-y-2 rounded-2xl border-2 border-ink/10 bg-cream p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-extrabold text-ink">
+                      <Mail size={14} className="text-coral" /> {m.name}
+                      <span className="text-xs font-semibold text-inksoft">· {m.email}</span>
+                    </div>
+                    <select
+                      value={m.status}
+                      onChange={(e) => markContactStatus(m.id, e.target.value as typeof m.status)}
+                      className="rounded-lg border-2 border-ink/15 bg-paper px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-inksoft focus:border-grape focus:outline-none"
+                    >
+                      <option value="unread">unread</option>
+                      <option value="reviewed">reviewed</option>
+                      <option value="archived">archived</option>
+                    </select>
+                  </div>
+                  <div className="text-xs font-extrabold uppercase tracking-wider text-grape">{m.subject}</div>
+                  <p className="text-sm font-medium leading-relaxed text-inksoft">{m.message}</p>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-inksoft">
+                    {m.projectType} · {m.createdAt}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

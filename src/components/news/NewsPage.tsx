@@ -1,62 +1,87 @@
 import React, { useState } from 'react';
-import { Newspaper, Clock, Search, ArrowRight } from 'lucide-react';
+import { Search, Clock, ArrowRight, Ghost } from 'lucide-react';
 import { useStudio } from '../../context/StudioContext';
-import { ArticleDetailModal } from './ArticleDetailModal';
+import { ARTICLE_COLORS } from '../../utils/catalog';
+import { Reveal } from '../ui/Reveal';
+import { Squiggle } from '../ui/Bits';
 
-export const NewsPage: React.FC = () => {
-  const { news, selectedArticle, setSelectedArticle } = useStudio();
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
+interface NewsPageProps {
+  mode?: 'news' | 'blog';
+}
+
+const NEWS_CATS = ['ALL', 'NEWS', 'ANNOUNCEMENT', 'COMMUNITY', 'STUDIO'];
+const BLOG_CATS = ['ALL', 'DEVLOG', 'BEHIND THE SCENES', 'STUDIO', 'COMMUNITY'];
+
+export const NewsPage: React.FC<NewsPageProps> = ({ mode = 'news' }) => {
+  const { news, setSelectedArticle } = useStudio();
+  const [category, setCategory] = useState('ALL');
+  const [query, setQuery] = useState('');
 
   const published = news.filter((a) => a.published);
+  const cats = mode === 'news' ? NEWS_CATS : BLOG_CATS;
 
-  const categories = ['ALL', 'DEVLOG', 'BEHIND THE SCENES', 'ANNOUNCEMENT', 'STUDIO'];
-
-  const filteredNews = published.filter((art) => {
-    const matchesCat = selectedCategory === 'ALL' || art.category === selectedCategory;
-    const matchesSearch =
-      art.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      art.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      art.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCat && matchesSearch;
+  const filtered = published.filter((a) => {
+    const matchCat = category === 'ALL' || a.category === category;
+    const q = query.trim().toLowerCase();
+    const matchQ =
+      !q ||
+      a.title.toLowerCase().includes(q) ||
+      a.excerpt.toLowerCase().includes(q) ||
+      a.tags.some((t) => t.toLowerCase().includes(q));
+    return matchCat && matchQ;
   });
 
-  const featured = published.find((a) => a.featured) || published[0];
+  const featured = filtered.find((a) => a.featured) || filtered[0];
+  const rest = filtered.filter((a) => a.id !== featured?.id);
 
   return (
-    <div id="news-page" className="min-h-screen pt-32 pb-24 px-4 sm:px-6 lg:px-12 bg-[#08090d]">
-      <div className="max-w-7xl mx-auto space-y-16">
-        {/* Page Header */}
-        <div className="space-y-6 max-w-4xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-[#ff5722]">
-            <Newspaper size={12} />
-            <span>DISPATCHES // DEVLOGS & TRANSMISSIONS</span>
-          </div>
+    <div id="news-page" className="relative min-h-screen overflow-hidden pt-32 pb-24 sm:pt-36">
+      <div className="pointer-events-none absolute -left-32 top-24 h-96 w-96 rounded-full bg-sky/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-24 top-2/3 h-80 w-80 rounded-full bg-sun/20 blur-3xl" aria-hidden="true" />
 
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-display font-black text-white uppercase tracking-tight leading-[0.95]">
-            FROM THE <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5722] via-[#ff8a65] to-[#22d3ee]">
-              STUDIO.
-            </span>
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
+        {/* Header */}
+        <Reveal className="max-w-3xl space-y-5">
+          <span className="inline-flex -rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-sky px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-white shadow-sticker-sm">
+            {mode === 'news' ? '📰 The newsroom' : '✍️ The blog'}
+          </span>
+          <h1 className="font-display text-5xl font-extrabold uppercase leading-[0.92] tracking-tight text-ink sm:text-7xl">
+            {mode === 'news' ? (
+              <>
+                What’s happening in the{' '}
+                <span className="relative inline-block text-coral">
+                  game world
+                  <Squiggle className="absolute -bottom-3 left-0 h-4 w-full" />
+                </span>
+              </>
+            ) : (
+              <>
+                Devlogs, stories &{' '}
+                <span className="relative inline-block text-grape">
+                  behind the scenes
+                  <Squiggle color="#6C4CF1" className="absolute -bottom-3 left-0 h-4 w-full" />
+                </span>
+              </>
+            )}
           </h1>
-
-          <p className="text-base sm:text-lg text-zinc-400 font-sans leading-relaxed max-w-2xl">
-            A peek behind the blast doors. Deep technical writeups on physics solvers, worldbuilding
-            philosophies, sound design, and progress milestones across all active projects.
+          <p className="text-base font-medium leading-relaxed text-inksoft">
+            {mode === 'news'
+              ? 'Announcements, updates and community happenings — straight from the studio floor, lightly edited for spelling.'
+              : 'Long-form writeups from the people building the worlds: physics post-mortems, sound experiments, jam week chaos and mascot lore.'}
           </p>
-        </div>
+        </Reveal>
 
-        {/* Categories & Search */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-white/10 pb-6">
-          <div className="flex flex-wrap items-center gap-2">
-            {categories.map((cat) => (
+        {/* Filters + search */}
+        <Reveal delay={0.06} className="mt-10 flex flex-col gap-4 border-b-2 border-dashed border-ink/15 pb-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {cats.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-full text-xs font-editorial font-bold tracking-wider transition-all duration-200 cursor-pointer ${
-                  selectedCategory === cat
-                    ? 'bg-[#ff5722] text-white shadow-md shadow-[#ff5722]/30'
-                    : 'text-zinc-400 hover:text-white bg-[#12141d] border border-white/10'
+                onClick={() => setCategory(cat)}
+                className={`rounded-full border-2 border-ink px-4 py-2 text-xs font-extrabold uppercase tracking-wide transition-all duration-200 cursor-pointer ${
+                  category === cat
+                    ? '-rotate-1 scale-105 bg-grape text-white shadow-sticker-sm'
+                    : 'bg-cream text-inksoft hover:-translate-y-0.5 hover:text-ink hover:shadow-sticker-sm'
                 }`}
               >
                 {cat}
@@ -64,130 +89,122 @@ export const NewsPage: React.FC = () => {
             ))}
           </div>
 
-          {/* Search box */}
-          <div className="relative w-full sm:w-64">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <div className="relative w-full lg:w-72">
+            <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-inksoft" />
             <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search dispatches..."
-              className="w-full pl-9 pr-4 py-2 rounded-full bg-[#12141d] border border-white/10 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#ff5722]"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search stories…"
+              className="w-full rounded-full border-2 border-ink/15 bg-cream py-2.5 pl-10 pr-4 text-sm font-semibold text-ink placeholder-inksoft/60 focus:border-grape focus:outline-none"
             />
           </div>
-        </div>
+        </Reveal>
 
-        {/* Featured Cover Story */}
-        {featured && selectedCategory === 'ALL' && !searchQuery && (
-          <div
-            onClick={() => setSelectedArticle(featured)}
-            className="rounded-3xl overflow-hidden bg-[#11131c] border border-white/15 hover:border-[#ff5722]/60 transition-all duration-500 group cursor-pointer shadow-2xl grid grid-cols-1 lg:grid-cols-12 gap-0"
-          >
-            <div className="lg:col-span-7 relative aspect-[16/9] w-full overflow-hidden">
-              <img
-                src={featured.coverImage}
-                alt={featured.title}
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#11131c] via-transparent to-transparent lg:hidden" />
-              <div className="absolute top-4 left-4">
-                <span className="px-3 py-1 rounded-full text-[11px] font-mono tracking-wider uppercase bg-[#ff5722] text-white font-bold">
-                  COVER STORY // {featured.category}
+        {/* Featured cover story */}
+        {featured && (
+          <Reveal delay={0.08} className="mt-10">
+            <article
+              onClick={() => setSelectedArticle(featured)}
+              className="group grid cursor-pointer grid-cols-1 overflow-hidden rounded-[30px] border-2 border-ink/10 bg-cream shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-ink/30 hover:shadow-lift lg:grid-cols-12"
+            >
+              <div className="relative overflow-hidden lg:col-span-7">
+                <img
+                  src={featured.coverImage}
+                  alt={featured.title}
+                  className="aspect-[16/10] w-full object-cover transition-transform duration-500 group-hover:scale-105 lg:h-full"
+                />
+                <span
+                  className={`absolute left-4 top-4 -rotate-2 rounded-full border-2 border-ink px-3.5 py-1 text-[10px] font-extrabold uppercase tracking-wider shadow-sticker-sm ${
+                    ARTICLE_COLORS[featured.category]
+                  }`}
+                >
+                  Cover story · {featured.category}
                 </span>
               </div>
-            </div>
-
-            <div className="lg:col-span-5 p-8 sm:p-12 flex flex-col justify-between space-y-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 text-xs font-mono text-zinc-400">
-                  <span>{featured.date}</span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1 text-[#22d3ee]">
-                    <Clock size={12} /> {featured.readTime}
+              <div className="flex flex-col justify-between gap-6 p-7 sm:p-10 lg:col-span-5">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-wider text-inksoft">
+                    <span>{featured.date}</span>
+                    <span className="h-1 w-1 rounded-full bg-ink/30" />
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={12} /> {featured.readTime}
+                    </span>
+                  </div>
+                  <h2 className="font-display text-2xl font-extrabold leading-tight text-ink transition-colors group-hover:text-grape sm:text-4xl">
+                    {featured.title}
+                  </h2>
+                  <p className="text-sm font-medium leading-relaxed text-inksoft">{featured.excerpt}</p>
+                </div>
+                <div className="flex items-center justify-between border-t-2 border-dashed border-ink/15 pt-4">
+                  <span className="text-xs font-bold text-inksoft">
+                    By <span className="text-ink">{featured.author.name}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs font-extrabold uppercase tracking-wider text-coral">
+                    Read <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
                   </span>
                 </div>
-
-                <h2 className="text-2xl sm:text-4xl font-display font-black text-white group-hover:text-[#ff5722] transition-colors leading-snug">
-                  {featured.title}
-                </h2>
-
-                <p className="text-sm text-zinc-300 font-sans leading-relaxed">
-                  {featured.excerpt}
-                </p>
               </div>
-
-              <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-                <div className="text-xs text-zinc-400 font-sans">
-                  By <span className="text-white font-medium">{featured.author.name}</span>
-                </div>
-                <span className="text-xs font-editorial font-bold text-[#ff5722] group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                  READ ARTICLE →
-                </span>
-              </div>
-            </div>
-          </div>
+            </article>
+          </Reveal>
         )}
 
-        {/* Magazine Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredNews.map((art) => (
-            <div
-              key={art.id}
-              onClick={() => setSelectedArticle(art)}
-              className="rounded-3xl overflow-hidden bg-[#11131c] border border-white/10 hover:border-[#ff5722]/50 transition-all duration-300 group cursor-pointer shadow-xl flex flex-col justify-between"
-            >
-              <div>
-                <div className="relative aspect-[16/10] w-full overflow-hidden">
+        {/* Grid */}
+        <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {rest.map((article, i) => (
+            <Reveal key={article.id} delay={0.05 * i}>
+              <article
+                onClick={() => setSelectedArticle(article)}
+                className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-[26px] border-2 border-ink/10 bg-cream shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-ink/30 hover:shadow-lift"
+              >
+                <div className="relative overflow-hidden">
                   <img
-                    src={art.coverImage}
-                    alt={art.title}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
+                    src={article.coverImage}
+                    alt={article.title}
+                    className="aspect-[16/10] w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
-                  <div className="absolute top-3 left-3">
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-wider uppercase bg-black/80 backdrop-blur-md text-[#ff5722] border border-[#ff5722]/30 font-bold">
-                      {art.category}
+                  <span
+                    className={`absolute left-3 top-3 -rotate-2 rounded-full border-2 border-ink px-3 py-0.5 text-[9px] font-extrabold uppercase tracking-wider shadow-sticker-sm ${
+                      ARTICLE_COLORS[article.category]
+                    }`}
+                  >
+                    {article.category}
+                  </span>
+                </div>
+                <div className="flex flex-1 flex-col justify-between gap-4 p-6">
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-inksoft">
+                      <span>{article.date}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={11} /> {article.readTime}
+                      </span>
+                    </div>
+                    <h3 className="font-display text-lg font-extrabold leading-snug text-ink transition-colors group-hover:text-grape">
+                      {article.title}
+                    </h3>
+                    <p className="text-xs font-medium leading-relaxed text-inksoft line-clamp-3">{article.excerpt}</p>
+                  </div>
+                  <div className="flex items-center justify-between border-t-2 border-dashed border-ink/10 pt-3 text-[11px] font-bold">
+                    <span className="text-inksoft">{article.author.name}</span>
+                    <span className="inline-flex items-center gap-1 uppercase tracking-wider text-coral">
+                      Read <ArrowRight size={12} className="transition-transform group-hover:translate-x-1" />
                     </span>
                   </div>
                 </div>
-
-                <div className="p-6 space-y-3">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
-                    <span>{art.date}</span>
-                    <span className="flex items-center gap-1">
-                      <Clock size={11} className="text-[#22d3ee]" /> {art.readTime}
-                    </span>
-                  </div>
-
-                  <h3 className="text-lg sm:text-xl font-display font-bold text-white group-hover:text-[#ff5722] transition-colors leading-snug">
-                    {art.title}
-                  </h3>
-
-                  <p className="text-xs text-zinc-400 font-sans leading-relaxed line-clamp-3">
-                    {art.excerpt}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-6 pt-0 border-t border-white/5 flex items-center justify-between text-xs">
-                <span className="text-zinc-500 font-sans text-[11px]">{art.author.name}</span>
-                <span className="font-editorial font-bold text-[#ff5722] group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                  READ →
-                </span>
-              </div>
-            </div>
+              </article>
+            </Reveal>
           ))}
         </div>
-      </div>
 
-      {/* Modal reader */}
-      {selectedArticle && (
-        <ArticleDetailModal
-          article={selectedArticle}
-          onClose={() => setSelectedArticle(null)}
-        />
-      )}
+        {filtered.length === 0 && (
+          <div className="mt-12 flex flex-col items-center gap-3 rounded-[26px] border-2 border-dashed border-ink/25 bg-cream/60 p-14 text-center">
+            <Ghost size={40} className="text-sky" />
+            <p className="font-display text-2xl font-extrabold uppercase text-ink">No stories here yet</p>
+            <p className="max-w-sm text-sm font-medium text-inksoft">
+              Try another category, or clear the search — the ink is still drying on a few pieces.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

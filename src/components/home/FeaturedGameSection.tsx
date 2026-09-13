@@ -1,120 +1,108 @@
-import React, { useState } from 'react';
-import { Play, Sparkles, ArrowRight, Monitor, Gamepad2, Layers } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Play, ArrowRight, Star, Heart } from 'lucide-react';
+import { motion, useScroll, useTransform } from 'motion/react';
 import { useStudio } from '../../context/StudioContext';
+import { platformShort } from '../../utils/catalog';
+import { TrophyBit, CoinBit } from '../ui/Bits';
 
 export const FeaturedGameSection: React.FC = () => {
-  const { games, setSelectedGame } = useStudio();
-  const [isHovered, setIsHovered] = useState(false);
+  const { games, setSelectedGame, toggleWishlist, isWishlisted } = useStudio();
+  const featured = games.find((g) => g.featured) || games[0];
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
+  const y = useTransform(scrollYProgress, [0, 1], ['4%', '-4%']);
 
-  // Get primary game
-  const featuredGame = games.find((g) => g.featured) || games[0];
+  if (!featured) return null;
+  const wished = isWishlisted(featured.id);
 
   return (
-    <section
-      id="featured-game-section"
-      className="relative w-full py-24 bg-[#08090d] border-t border-white/10 overflow-hidden"
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12">
-        {/* Section Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-12">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#ff5722] uppercase mb-2">
-              <Sparkles size={13} />
-              <span>02 / FLAGSHIP REVELATION</span>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-display font-black text-white uppercase tracking-tight">
-              FEATURED UNIVERSE
-            </h2>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs font-mono text-zinc-400">
-            <span className="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[#22d3ee]">
-              STATUS: {featuredGame.status}
-            </span>
-            <span>TARGET: {featuredGame.releaseYear}</span>
-          </div>
-        </div>
-
-        {/* Full-Width Cinematic Game Portal */}
+    <section id="featured-game-section" className="relative py-10 sm:py-14">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
         <div
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          className="relative w-full rounded-3xl overflow-hidden border border-white/15 bg-[#0f1118] shadow-2xl group transition-all duration-700 hover:border-[#ff5722]/60"
+          ref={ref}
+          className="relative overflow-hidden rounded-[36px] border-2 border-ink shadow-lift"
         >
-          {/* Main Visual Artwork with Depth Movement */}
-          <div className="relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden">
-            <img
-              src={featuredGame.heroImage}
-              alt={featuredGame.title}
-              className={`w-full h-full object-cover transition-transform duration-1000 ease-out ${
-                isHovered ? 'scale-105 -translate-y-2' : 'scale-100 translate-y-0'
-              }`}
-              referrerPolicy="no-referrer"
-            />
+          {/* Artwork with gentle parallax */}
+          <motion.img
+            style={{ y }}
+            src="/src/assets/images/art_week_wide.jpg"
+            alt="The connected worlds of Brainchild Games"
+            className="absolute inset-0 h-[112%] w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-ink/92 via-ink/60 to-ink/10" aria-hidden="true" />
+          <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent" aria-hidden="true" />
 
-            {/* Cinematic Gradient Overlays */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#090a0f] via-[#090a0f]/40 to-transparent pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#090a0f]/90 via-transparent to-transparent pointer-events-none hidden md:block" />
+          {/* Floating badges */}
+          <span className="absolute right-6 top-8 rotate-6 rounded-full border-2 border-ink bg-lime px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-ink shadow-sticker-sm animate-bob sm:right-12 sm:top-12">
+            98% players love it
+          </span>
+          <span className="absolute right-16 top-32 hidden -rotate-6 rounded-full border-2 border-ink bg-coral px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-sticker-sm animate-float md:block">
+            New
+          </span>
+          <span className="absolute bottom-24 right-8 hidden rotate-3 rounded-full border-2 border-ink bg-grape px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-sticker-sm animate-float-slow md:block">
+            Editor’s pick
+          </span>
+          <div className="absolute bottom-10 right-14 hidden lg:block" aria-hidden="true">
+            <CoinBit className="w-12 animate-float" />
+          </div>
 
-            {/* Top Interactive Badges */}
-            <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-10">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-xs font-mono text-zinc-200">
-                <span className="w-2 h-2 rounded-full bg-[#ff5722] animate-ping" />
-                <span>UNREAL ENGINE 5 // NEXT-GEN PHYSICS</span>
+          {/* Content */}
+          <div className="relative z-10 px-6 py-16 sm:px-12 sm:py-20 lg:px-20 lg:py-24">
+            <div className="max-w-xl space-y-6">
+              <span className="inline-flex -rotate-2 items-center gap-2 rounded-full border-2 border-ink bg-sun px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-ink shadow-sticker-sm">
+                <TrophyBit className="w-4" /> Game of the week
+              </span>
+
+              <div>
+                <div className="text-xs font-extrabold uppercase tracking-[0.3em] text-sun">
+                  {featured.subtitle}
+                </div>
+                <h2 className="mt-2 font-display text-5xl font-extrabold uppercase leading-[0.92] tracking-tight text-paper sm:text-7xl">
+                  {featured.title}
+                </h2>
               </div>
 
-              <div className="hidden sm:flex items-center gap-2 text-xs font-editorial text-zinc-300">
-                <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10">
-                  {featuredGame.genre}
+              <p className="text-lg font-medium italic leading-relaxed text-paper/90">
+                “An unforgettable adventure — like catching an updraft on a paper plane the size of a
+                island.”
+              </p>
+              <p className="max-w-md text-sm font-medium leading-relaxed text-paper/75">
+                {featured.description}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-4 pt-2">
+                <button
+                  onClick={() => setSelectedGame(featured)}
+                  className="group inline-flex items-center gap-2.5 rounded-xl border-2 border-ink bg-coral px-7 py-4 text-sm font-extrabold uppercase tracking-wide text-white shadow-sticker transition-all hover:-translate-y-1 hover:bg-coraldeep hover:shadow-[6px_6px_0_0_var(--color-ink)] active:translate-y-0 cursor-pointer"
+                >
+                  <Play size={15} className="fill-white" /> Play now
+                </button>
+                <button
+                  onClick={() => setSelectedGame(featured)}
+                  className="group inline-flex items-center gap-2.5 rounded-xl border-2 border-paper/70 bg-paper/10 px-7 py-4 text-sm font-extrabold uppercase tracking-wide text-paper backdrop-blur-sm transition-all hover:-translate-y-1 hover:bg-paper hover:text-ink cursor-pointer"
+                >
+                  View game
+                  <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+                </button>
+                <button
+                  onClick={() => toggleWishlist(featured.id)}
+                  aria-label="Toggle wishlist"
+                  className={`grid h-12 w-12 place-items-center rounded-xl border-2 border-ink transition-all hover:scale-105 cursor-pointer ${
+                    wished ? 'bg-coral text-white' : 'bg-paper text-ink'
+                  }`}
+                >
+                  <Heart size={18} className={wished ? 'fill-white' : ''} />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-xs font-bold uppercase tracking-wider text-paper/80">
+                <span className="inline-flex items-center gap-1.5">
+                  <Star size={13} className="fill-sun text-sun" /> {featured.rating?.toFixed(1) ?? '4.9'}
                 </span>
-              </div>
-            </div>
-
-            {/* Bottom Content Area */}
-            <div className="absolute bottom-6 left-6 right-6 z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-              <div className="max-w-2xl space-y-3">
-                <div className="text-xs font-mono tracking-widest text-[#ff5722] uppercase">
-                  {featuredGame.subtitle}
-                </div>
-                <h3 className="text-3xl sm:text-5xl lg:text-6xl font-display font-black text-white uppercase tracking-tight">
-                  {featuredGame.title}
-                </h3>
-                <p className="text-sm sm:text-base text-zinc-300 font-sans line-clamp-2 sm:line-clamp-none max-w-xl">
-                  {featuredGame.description}
-                </p>
-
-                {/* Platform Icons */}
-                <div className="flex items-center gap-3 pt-2 text-xs text-zinc-400 font-mono">
-                  <span className="flex items-center gap-1.5">
-                    <Monitor size={14} className="text-[#22d3ee]" /> PC
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1.5">
-                    <Gamepad2 size={14} className="text-[#ff5722]" /> PS5
-                  </span>
-                  <span>•</span>
-                  <span>Xbox Series X|S</span>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3">
-                <button
-                  id="view-featured-game-btn"
-                  onClick={() => setSelectedGame(featuredGame)}
-                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full bg-[#ff5722] text-white font-editorial font-bold text-xs tracking-wider uppercase shadow-lg shadow-[#ff5722]/30 hover:bg-[#f44710] transition-all duration-200 cursor-pointer"
-                >
-                  <span>VIEW GAME ARCHIVE</span>
-                  <ArrowRight size={14} />
-                </button>
-
-                <button
-                  onClick={() => setSelectedGame(featuredGame)}
-                  className="p-3.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer"
-                  title="Watch Gameplay Preview"
-                >
-                  <Play size={16} className="fill-white" />
-                </button>
+                <span className="h-1 w-1 rounded-full bg-paper/40" />
+                <span>{platformShort(featured.platforms)}</span>
+                <span className="h-1 w-1 rounded-full bg-paper/40" />
+                <span>{featured.releaseYear}</span>
               </div>
             </div>
           </div>

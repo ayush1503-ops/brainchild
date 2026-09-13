@@ -1,249 +1,279 @@
 import React, { useState } from 'react';
-import { Sparkles, Compass, Heart, Award, ArrowRight, ShieldCheck, Terminal } from 'lucide-react';
+import { ArrowRight, Award, Heart, Gamepad2, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { STUDIO_TIMELINE, TEAM_MEMBERS } from '../../data/initialData';
-import { StudioMascot } from '../mascot/StudioMascot';
 import { useStudio } from '../../context/StudioContext';
+import { Reveal } from '../ui/Reveal';
+import { Squiggle, StarSticker, ControllerBit, TrophyBit } from '../ui/Bits';
+
+const PHILOSOPHIES = [
+  {
+    emoji: '🎮',
+    title: 'Play over polish, until polish feels like play',
+    desc: 'If a mechanic doesn’t spark a grin in a greybox room within fifteen seconds, no amount of shader work will rescue it. We prototype relentlessly and throw away happily.'
+  },
+  {
+    emoji: '🗺️',
+    title: 'Worlds first, always',
+    desc: 'Our environments are characters, not backdrops. Rocks have history, bells have moods, and every corner hides one small delightful secret for the curious.'
+  },
+  {
+    emoji: '🌿',
+    title: 'Human pace over crunch',
+    desc: 'Great games come from rested people with lives outside of games. Strict 4-day week, zero mandatory overtime, and a pizza oven we genuinely regret.'
+  }
+];
 
 export const AboutPage: React.FC = () => {
-  const { setCurrentRoute, setIsCmsOpen } = useStudio();
-  const [activeTimelineIndex, setActiveTimelineIndex] = useState(0);
-
-  const philosophies = [
-    {
-      title: 'Play Over Polish Until Polish Feels Like Play',
-      desc: 'If a movement mechanic doesn’t spark a smile in a greybox test room within 15 seconds, no amount of 8K shaders will rescue it. We prototype relentlessly.'
-    },
-    {
-      title: 'World-First Architecture',
-      desc: 'We don’t treat environments as passive backdrops. In our games, rocks have historical strata, star systems obey gravitational anomalies, and architecture tells wordless stories.'
-    },
-    {
-      title: 'Human Sustenance Over Crunch',
-      desc: 'Great art comes from rested minds with lived experiences outside of video games. We operate on a strict 4-day work week and zero mandatory overtime.'
-    }
-  ];
+  const { setCurrentRoute } = useStudio();
+  const [activeIdx, setActiveIdx] = useState(0);
+  const active = STUDIO_TIMELINE[activeIdx];
 
   return (
-    <div id="about-page" className="min-h-screen pt-32 pb-24 px-4 sm:px-6 lg:px-12 bg-[#08090d]">
-      <div className="max-w-7xl mx-auto space-y-24">
-        {/* Page Hero */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          <div className="lg:col-span-8 space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-[#ff5722]">
-              <Compass size={12} />
-              <span>THE STUDIO ORIGIN // 2019–PRESENT</span>
-            </div>
+    <div id="about-page" className="relative min-h-screen overflow-hidden pt-32 pb-24 sm:pt-36">
+      <div className="pointer-events-none absolute -right-32 top-32 h-96 w-96 rounded-full bg-coral/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -left-24 top-2/3 h-96 w-96 rounded-full bg-grape/10 blur-3xl" aria-hidden="true" />
 
-            <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-display font-black text-white uppercase tracking-tight leading-[0.92]">
-              IT STARTED <br />
-              WITH A GAME.{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5722] via-[#ff8a65] to-[#22d3ee]">
-                THEN WE KEPT GOING.
+      <div className="relative mx-auto max-w-7xl space-y-24 px-4 sm:px-6 lg:px-10">
+        {/* Hero */}
+        <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12">
+          <Reveal className="lg:col-span-7">
+            <span className="inline-flex -rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-grape px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-white shadow-sticker-sm">
+              ❤️ Our story · 2019 → today
+            </span>
+            <h1 className="mt-6 font-display text-5xl font-extrabold uppercase leading-[0.92] tracking-tight text-ink sm:text-7xl">
+              We make games worth{' '}
+              <span className="relative inline-block text-coral">
+                playing
+                <Squiggle className="absolute -bottom-3 left-0 h-4 w-full" />
               </span>
             </h1>
-
-            <p className="text-base sm:text-lg text-zinc-300 font-sans leading-relaxed max-w-2xl">
-              Brainchild Games was founded around a kitchen table in Montreal by two developers who
-              wanted to step away from corporate assembly-line production. Today, we are 28 artists,
-              physicists, and designers united by a single obsession: creating places worth exploring.
+            <p className="mt-7 max-w-xl text-base font-medium leading-relaxed text-inksoft sm:text-lg">
+              Brainchild Games began around a wobbly kitchen table in Montreal, founded by two
+              developers who wanted out of assembly-line production. Today we are 28 artists,
+              physicists, composers and professional bell-ringers, united by one obsession: building
+              places worth visiting twice.
             </p>
-          </div>
+            <p className="mt-4 max-w-xl text-sm font-medium leading-relaxed text-inksoft">
+              Our mission is simple to say and hard to do — make worlds that hug you back. Games
+              that respect your time, reward your curiosity, and leave you humming their theme song
+              in the grocery store.
+            </p>
 
-          {/* Right Mascot in Studio Environment */}
-          <div className="lg:col-span-4 flex flex-col items-center justify-center relative">
-            <StudioMascot mode="floating" showSpeech={true} speechText="Born in 2019! 🚀" />
-            <div className="mt-4 text-center">
-              <span className="text-xs font-mono text-zinc-400">NOVA // ARCHIVAL UNIT</span>
+            <div className="mt-8 flex flex-wrap gap-3">
+              {['Player-first', 'Handmade', 'Independent', 'Slightly quirky'].map((chip, i) => (
+                <span
+                  key={chip}
+                  className={`rounded-full border-2 border-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wider shadow-sticker-sm ${
+                    i % 2 === 0 ? 'bg-sun text-ink' : 'bg-cream text-ink'
+                  } ${i % 2 === 0 ? '-rotate-1' : 'rotate-1'}`}
+                >
+                  {chip}
+                </span>
+              ))}
             </div>
-          </div>
-        </div>
+          </Reveal>
 
-        {/* Visual Studio Story Section */}
-        <div className="rounded-3xl bg-[#11131c] border border-white/10 p-8 sm:p-12 lg:p-16 relative overflow-hidden shadow-2xl">
-          <div className="max-w-3xl space-y-6">
-            <div className="text-xs font-mono text-[#22d3ee] uppercase tracking-widest font-bold">
-              OUR JOURNEY & CREATIVE SOUL
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-display font-black text-white uppercase tracking-tight">
-              WHY WE REJECT GENERIC FORMULAS
-            </h2>
-            <p className="text-zinc-300 font-sans leading-relaxed text-sm sm:text-base">
-              The modern games landscape is flooded with algorithm-driven Skinner boxes and live-service
-              engagement traps. We wanted something different: games that evoke the sensory wonder of
-              picking up a strange cartridge in 1998, or walking into an exhibition where every corner
-              holds an unexpected sculptural revelation.
-            </p>
-            <p className="text-zinc-400 font-sans leading-relaxed text-sm">
-              We invest heavily in bespoke kinetic engineering. From our custom zero-g horizon-anchor
-              physics to dynamic volumetric solar storms, every system is designed from scratch to serve
-              the emotional core of that world.
-            </p>
-          </div>
-        </div>
-
-        {/* Interactive Studio Timeline */}
-        <div className="space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/10 pb-6">
-            <div>
-              <div className="text-xs font-mono text-[#ff5722] uppercase tracking-widest font-bold mb-1">
-                CHRONOLOGY
+          <Reveal delay={0.1} className="relative lg:col-span-5">
+            <div className="relative mx-auto max-w-sm">
+              <div className="-rotate-2 rounded-[30px] border-2 border-ink bg-cream p-3 shadow-sticker transition-transform duration-300 hover:rotate-0">
+                <img
+                  src="/src/assets/images/art_studio.jpg"
+                  alt="Inside the Brainchild studio"
+                  className="aspect-[4/3] w-full rounded-[20px] border-2 border-ink/10 object-cover"
+                />
               </div>
-              <h2 className="text-3xl sm:text-5xl font-display font-black text-white uppercase tracking-tight">
-                STUDIO MILESTONES
+              <div className="absolute -bottom-8 -right-4 w-32 rotate-6 rounded-3xl border-2 border-ink bg-cream p-2 shadow-sticker-sm">
+                <img src="/src/assets/images/mascot_pix.png" alt="Pix the mascot" className="w-full rounded-2xl" />
+              </div>
+              <span className="absolute -left-4 -top-5 -rotate-6 rounded-full border-2 border-ink bg-lime px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-ink shadow-sticker-sm animate-bob">
+                28 humans
+              </span>
+              <div className="absolute -left-10 bottom-10 hidden lg:block" aria-hidden="true">
+                <ControllerBit className="w-14 animate-float-slow" />
+              </div>
+            </div>
+          </Reveal>
+        </div>
+
+        {/* Mission banner */}
+        <Reveal>
+          <div className="relative overflow-hidden rounded-[36px] border-2 border-ink bg-grape p-8 shadow-lift sm:p-14">
+            <div className="absolute inset-0 bg-dots-light opacity-30" aria-hidden="true" />
+            <div className="absolute right-8 top-8 rotate-6" aria-hidden="true">
+              <TrophyBit className="w-14 animate-float" />
+            </div>
+            <div className="relative z-10 max-w-3xl space-y-5">
+              <span className="inline-flex -rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-sun px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-ink shadow-sticker-sm">
+                🎯 The mission
+              </span>
+              <blockquote className="font-display text-2xl font-extrabold leading-snug text-white sm:text-4xl">
+                “If a world doesn’t make the team want to step inside the monitor at 3am, we scrap
+                it and start over.”
+              </blockquote>
+              <p className="text-sm font-medium text-white/80">
+                — Julian Vance & Maya Lin-Torvalds, co-founders. Still true, eight years and four
+                worlds later.
+              </p>
+            </div>
+          </div>
+        </Reveal>
+
+        {/* Timeline */}
+        <div className="space-y-8">
+          <Reveal className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <span className="inline-flex rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-sun px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-ink shadow-sticker-sm">
+                🧭 Milestones
+              </span>
+              <h2 className="mt-4 font-display text-4xl font-extrabold uppercase tracking-tight text-ink sm:text-5xl">
+                The story so far
               </h2>
             </div>
-            <span className="text-xs font-mono text-zinc-500">
-              SELECT A MILESTONE TO VIEW TELEMETRY
-            </span>
-          </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-inksoft">Tap a year to peek</span>
+          </Reveal>
 
-          {/* Timeline navigation pills */}
-          <div className="flex flex-wrap gap-3">
+          <Reveal delay={0.05} className="flex flex-wrap gap-2.5">
             {STUDIO_TIMELINE.map((item, idx) => (
               <button
                 key={item.year}
-                onClick={() => setActiveTimelineIndex(idx)}
-                className={`px-6 py-3 rounded-full text-xs font-editorial font-bold tracking-wider transition-all duration-200 cursor-pointer ${
-                  activeTimelineIndex === idx
-                    ? 'bg-[#ff5722] text-white shadow-lg shadow-[#ff5722]/30 scale-105'
-                    : 'bg-[#12141e] text-zinc-400 border border-white/10 hover:border-white/30 hover:text-white'
+                onClick={() => setActiveIdx(idx)}
+                className={`rounded-full border-2 border-ink px-5 py-2.5 text-sm font-extrabold transition-all duration-200 cursor-pointer ${
+                  activeIdx === idx
+                    ? '-rotate-1 scale-105 bg-coral text-white shadow-sticker-sm'
+                    : 'bg-cream text-inksoft hover:-translate-y-0.5 hover:text-ink hover:shadow-sticker-sm'
                 }`}
               >
-                {item.year} // {item.tag}
+                {item.year}
               </button>
             ))}
-          </div>
+          </Reveal>
 
-          {/* Active Milestone Card */}
-          <div className="rounded-3xl bg-gradient-to-br from-[#121420] via-[#0e1017] to-[#151828] border border-white/15 p-8 sm:p-12 shadow-2xl relative overflow-hidden">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              <div className="lg:col-span-8 space-y-4">
-                <div className="text-xs font-mono text-[#22d3ee] uppercase tracking-widest font-bold">
-                  {STUDIO_TIMELINE[activeTimelineIndex].tag} • {STUDIO_TIMELINE[activeTimelineIndex].year}
-                </div>
-                <h3 className="text-2xl sm:text-4xl font-display font-black text-white uppercase tracking-tight">
-                  {STUDIO_TIMELINE[activeTimelineIndex].title}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={active.year}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3 }}
+              className="grid grid-cols-1 items-center gap-8 rounded-[30px] border-2 border-ink bg-cream p-8 shadow-sticker sm:p-12 lg:grid-cols-12"
+            >
+              <div className="space-y-4 lg:col-span-8">
+                <span className="inline-block rounded-full bg-grape px-3.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-white">
+                  {active.tag} · {active.year}
+                </span>
+                <h3 className="font-display text-2xl font-extrabold uppercase tracking-tight text-ink sm:text-4xl">
+                  {active.title}
                 </h3>
-                <p className="text-base text-zinc-300 font-sans leading-relaxed">
-                  {STUDIO_TIMELINE[activeTimelineIndex].description}
+                <p className="max-w-2xl text-sm font-medium leading-relaxed text-inksoft sm:text-base">
+                  {active.description}
                 </p>
               </div>
-
-              <div className="lg:col-span-4 flex justify-center">
-                <div className="w-32 h-32 rounded-2xl bg-[#090b10] border border-[#ff5722]/40 flex items-center justify-center p-4 text-center">
-                  <div className="space-y-1">
-                    <Award size={32} className="text-[#ff5722] mx-auto" />
-                    <div className="text-xs font-mono text-zinc-300 uppercase font-bold">
-                      {STUDIO_TIMELINE[activeTimelineIndex].year}
-                    </div>
-                  </div>
+              <div className="flex justify-center lg:col-span-4">
+                <div className="grid h-28 w-28 rotate-3 place-items-center rounded-3xl border-2 border-ink bg-sun shadow-sticker-sm">
+                  <Award size={40} className="text-ink" />
                 </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
-        {/* Creative Philosophies */}
+        {/* Philosophy */}
         <div className="space-y-8">
-          <div>
-            <div className="text-xs font-mono text-[#22d3ee] uppercase tracking-widest font-bold mb-1">
-              OUR BELIEFS
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-display font-black text-white uppercase tracking-tight">
-              CREATIVE PHILOSOPHY
+          <Reveal>
+            <span className="inline-flex -rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-lime px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-ink shadow-sticker-sm">
+              🧠 How we think
+            </span>
+            <h2 className="mt-4 font-display text-4xl font-extrabold uppercase tracking-tight text-ink sm:text-5xl">
+              Creative philosophy
             </h2>
-          </div>
+          </Reveal>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {philosophies.map((phil, i) => (
-              <div
-                key={i}
-                className="p-8 rounded-3xl bg-[#11131c] border border-white/10 hover:border-[#ff5722]/50 transition-all duration-300 space-y-4 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="text-xs font-mono text-[#ff5722] font-bold mb-3">0{i + 1} // PRINCIPLE</div>
-                  <h3 className="text-xl font-display font-bold text-white mb-2 leading-snug">
-                    {phil.title}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-zinc-400 font-sans leading-relaxed">
-                    {phil.desc}
-                  </p>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            {PHILOSOPHIES.map((p, i) => (
+              <Reveal key={p.title} delay={0.06 * i}>
+                <div className="flex h-full flex-col justify-between gap-6 rounded-[26px] border-2 border-ink/10 bg-cream p-7 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-ink/30 hover:shadow-lift">
+                  <div className="space-y-3">
+                    <span className="text-3xl">{p.emoji}</span>
+                    <h3 className="font-display text-lg font-extrabold leading-snug text-ink">{p.title}</h3>
+                    <p className="text-sm font-medium leading-relaxed text-inksoft">{p.desc}</p>
+                  </div>
+                  <div className="flex items-center gap-2 border-t-2 border-dashed border-ink/10 pt-4 text-[10px] font-extrabold uppercase tracking-widest text-inksoft">
+                    <Heart size={12} className="text-coral" /> Non-negotiable
+                  </div>
                 </div>
-                <div className="pt-4 border-t border-white/5 flex items-center gap-1.5 text-[10px] font-mono text-zinc-500">
-                  <ShieldCheck size={12} className="text-[#22d3ee]" /> NON-NEGOTIABLE
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
 
-        {/* Team Leadership */}
+        {/* Team */}
         <div className="space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/10 pb-6">
+          <Reveal className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="text-xs font-mono text-[#fbbf24] uppercase tracking-widest font-bold mb-1">
-                STUDIO LEADERSHIP
-              </div>
-              <h2 className="text-3xl sm:text-5xl font-display font-black text-white uppercase tracking-tight">
-                THE WORLD ARCHITECTS
+              <span className="inline-flex rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-coral px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-white shadow-sticker-sm">
+                👋 The crew
+              </span>
+              <h2 className="mt-4 font-display text-4xl font-extrabold uppercase tracking-tight text-ink sm:text-5xl">
+                World architects
               </h2>
             </div>
             <button
               onClick={() => setCurrentRoute('careers')}
-              className="text-xs font-editorial font-bold text-[#ff5722] hover:text-white uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer"
+              className="group inline-flex items-center gap-2 rounded-xl border-2 border-ink bg-cream px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-ink shadow-sticker-sm transition-all hover:-translate-y-0.5 hover:bg-sun cursor-pointer"
             >
-              <span>JOIN OUR CREW</span>
-              <ArrowRight size={13} />
+              Join the crew <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
             </button>
-          </div>
+          </Reveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {TEAM_MEMBERS.map((member) => (
-              <div
-                key={member.name}
-                className="p-6 rounded-2xl bg-[#11131c] border border-white/10 hover:border-white/30 transition-all duration-200 flex flex-col justify-between space-y-4 shadow-lg"
-              >
-                <div className="space-y-3">
-                  <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center font-display font-extrabold text-xl text-black"
-                    style={{ backgroundColor: member.photoColor }}
-                  >
-                    {member.name[0]}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {TEAM_MEMBERS.map((m, i) => (
+              <Reveal key={m.name} delay={0.06 * i}>
+                <div className="group flex h-full flex-col justify-between gap-5 rounded-[26px] border-2 border-ink/10 bg-cream p-6 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-ink/30 hover:shadow-lift">
+                  <div className="space-y-3">
+                    <div
+                      className="grid h-14 w-14 place-items-center rounded-2xl border-2 border-ink font-display text-xl font-extrabold text-white shadow-sticker-sm transition-transform group-hover:-rotate-6"
+                      style={{ backgroundColor: m.photoColor }}
+                    >
+                      {m.name[0]}
+                    </div>
+                    <div>
+                      <h3 className="font-display text-lg font-extrabold text-ink">{m.name}</h3>
+                      <div className="mt-0.5 text-xs font-extrabold uppercase tracking-wider text-grape">{m.role}</div>
+                    </div>
+                    <p className="text-xs font-medium leading-relaxed text-inksoft">{m.bio}</p>
                   </div>
-
-                  <div>
-                    <h3 className="text-lg font-display font-bold text-white">{member.name}</h3>
-                    <div className="text-xs font-mono text-[#ff5722] mt-0.5">{member.role}</div>
+                  <div className="flex items-center gap-2 border-t-2 border-dashed border-ink/10 pt-3 text-[11px] font-bold text-inksoft">
+                    <Gamepad2 size={13} className="shrink-0 text-coral" /> {m.favoriteGame}
                   </div>
-
-                  <p className="text-xs text-zinc-400 font-sans leading-relaxed">
-                    {member.bio}
-                  </p>
                 </div>
-
-                <div className="pt-3 border-t border-white/5 text-[11px] font-mono text-zinc-500">
-                  <span className="text-zinc-400">FAVORITES:</span> {member.favoriteGame}
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
 
-        {/* CMS Edit notice for studio client */}
-        <div className="p-6 rounded-2xl bg-[#12141d] border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Terminal size={18} className="text-[#22d3ee]" />
-            <span className="text-xs font-mono text-zinc-300">
-              Studio Leadership & CMS: All About content and milestones are editable via the Studio CMS panel.
-            </span>
+        {/* Fun closing strip */}
+        <Reveal>
+          <div className="flex flex-col items-center justify-between gap-6 rounded-[30px] border-2 border-ink bg-sun p-8 shadow-sticker sm:flex-row sm:p-10">
+            <div className="flex items-center gap-4">
+              <StarSticker className="w-10 animate-wiggle" />
+              <div>
+                <div className="font-display text-xl font-extrabold uppercase text-ink sm:text-2xl">
+                  Curious what we jam on Fridays?
+                </div>
+                <div className="text-sm font-medium text-ink/70">
+                  41 prototypes last jam week. One of them is a pigeon dating sim. We are not sorry.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setCurrentRoute('news')}
+              className="group inline-flex shrink-0 items-center gap-2 rounded-xl border-2 border-ink bg-ink px-6 py-3.5 text-xs font-extrabold uppercase tracking-wider text-paper shadow-[4px_4px_0_0_var(--color-coral)] transition-all hover:-translate-y-1 cursor-pointer"
+            >
+              <Sparkles size={14} /> Read the devlogs
+            </button>
           </div>
-          <button
-            onClick={() => setIsCmsOpen(true)}
-            className="px-4 py-2 rounded-full bg-[#22d3ee]/10 text-[#22d3ee] border border-[#22d3ee]/30 hover:bg-[#22d3ee]/20 text-xs font-editorial font-bold uppercase tracking-wider cursor-pointer"
-          >
-            OPEN CMS
-          </button>
-        </div>
+        </Reveal>
       </div>
     </div>
   );
