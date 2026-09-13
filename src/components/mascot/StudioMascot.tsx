@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, MessageSquare, Compass, Rocket } from 'lucide-react';
-import { playSound } from '../../utils/sound';
+import { playUiClick } from '../../utils/sound';
 
 interface StudioMascotProps {
   mode?: 'hero' | 'floating' | 'footer' | 'badge' | 'compact';
@@ -27,7 +27,7 @@ export const StudioMascot: React.FC<StudioMascotProps> = ({
   ];
 
   const handleMascotClick = () => {
-    playSound('beep');
+    playUiClick();
     setActiveQuoteIndex((prev) => (prev + 1) % quotes.length);
   };
 
