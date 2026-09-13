@@ -33,7 +33,7 @@ export const GameDiscoverySection: React.FC = () => {
               Find your <span className="text-coral">next</span> game
             </h2>
             <p className="max-w-lg text-base font-medium leading-relaxed text-inksoft">
-              Four handmade worlds, zero filler. Filter by mood, flip a card, and fall into something
+              Handmade worlds, zero filler. Filter by mood, flip a card, and fall into something
               new.
             </p>
           </div>
