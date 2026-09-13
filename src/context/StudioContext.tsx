@@ -99,15 +99,11 @@ export const StudioProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const toggleWishlist = (gameId: string) => {
-    setWishlist((prev) => {
-      const has = prev.includes(gameId);
-      const game = games.find((g) => g.id === gameId);
-      const label = game ? game.title : 'Game';
-      window.setTimeout(() => {
-        notify(has ? `${label} removed from your wishlist` : `${label} added to your wishlist ♥`);
-      }, 0);
-      return has ? prev.filter((id) => id !== gameId) : [...prev, gameId];
-    });
+    const has = wishlist.includes(gameId);
+    const game = games.find((g) => g.id === gameId);
+    const label = game ? game.title : 'Game';
+    setWishlist(has ? wishlist.filter((id) => id !== gameId) : [...wishlist, gameId]);
+    notify(has ? `${label} removed from your wishlist` : `${label} added to your wishlist ♥`);
   };
 
   const [news, setNews] = useState<Article[]>(() => {
