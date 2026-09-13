@@ -1,8 +1,10 @@
 import React from 'react';
 import { ArrowDown, Play, ArrowRight, Sparkles } from 'lucide-react';
-import { HeroScene3D } from '../3d/HeroScene3D';
+import { GameHeroBackground } from './GameHeroBackground';
 import { StudioMascot } from '../mascot/StudioMascot';
 import { useStudio } from '../../context/StudioContext';
+
+import { BrainchildLogo } from '../common/BrainchildLogo';
 
 export const HeroSection: React.FC = () => {
   const { setCurrentRoute, games, setSelectedGame } = useStudio();
@@ -18,10 +20,10 @@ export const HeroSection: React.FC = () => {
   return (
     <section
       id="hero-section"
-      className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden pt-32 pb-12 px-4 sm:px-6 lg:px-12 bg-[#090a0d]"
+      className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden pt-28 pb-12 px-4 sm:px-6 lg:px-12 bg-[#090a0d]"
     >
-      {/* 3D WebGL Layer: Ambient Celestial Atmosphere */}
-      <HeroScene3D className="z-0" />
+      {/* Dynamic Game Studio Background */}
+      <GameHeroBackground className="z-0" />
 
       {/* Atmospheric lighting depth */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-[#ff5722]/10 blur-[180px] pointer-events-none z-0" />
@@ -30,7 +32,7 @@ export const HeroSection: React.FC = () => {
       <div className="relative z-10 max-w-7xl mx-auto w-full flex items-center justify-between text-xs font-mono tracking-widest text-zinc-400 uppercase pt-2">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[#ff5722]" />
-          <span className="text-zinc-300">INDEPENDENT GAME STUDIO // MONTREAL</span>
+          <span className="text-zinc-300">INDEPENDENT SPACE GAME STUDIO // MONTREAL</span>
         </div>
         <div className="hidden sm:flex items-center gap-4 text-zinc-400">
           <span>ESTABLISHED 2019</span>
@@ -40,14 +42,19 @@ export const HeroSection: React.FC = () => {
       </div>
 
       {/* Main Center Content: Editorial Typography + Cinematic Artwork */}
-      <div className="relative z-10 max-w-7xl mx-auto w-full my-auto py-12">
+      <div className="relative z-10 max-w-7xl mx-auto w-full my-auto py-8 sm:py-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          {/* Left Column: Bold, Articulated Headline */}
-          <div className="lg:col-span-8 flex flex-col items-start space-y-7">
+          {/* Left Column: Official Logo + Bold Headline */}
+          <div className="lg:col-span-8 flex flex-col items-start space-y-6">
+            {/* Official Brand Logo Banner */}
+            <div className="p-3 sm:p-4 rounded-2xl bg-[#0f111a]/80 backdrop-blur-md border border-white/10 shadow-2xl inline-flex items-center gap-4 group hover:border-[#ff5722]/60 transition-all">
+              <BrainchildLogo variant="full" animated={true} />
+            </div>
+
             <h1 className="text-4xl sm:text-6xl md:text-7xl xl:text-8xl font-display font-black leading-[0.92] tracking-tight text-white uppercase select-none">
               WE MAKE <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-200 to-zinc-400">
-                WORLDS
+                SPACE WORLDS
               </span>{' '}
               <br />
               WORTH GETTING <br />
@@ -55,8 +62,8 @@ export const HeroSection: React.FC = () => {
             </h1>
 
             <p className="max-w-xl text-base sm:text-lg text-zinc-300 leading-relaxed font-sans font-normal">
-              Brainchild Games is an independent game studio crafting kinetic, atmosphere-first
-              universes. We obsess over weight, spatial curiosity, and tactile mechanics that respect
+              Brainchild Games is an independent space game studio crafting kinetic, zero-gravity
+              universes. We obsess over momentum, spatial curiosity, and tactile mechanics that respect
               the player’s intelligence.
             </p>
 

@@ -3,6 +3,8 @@ import { Volume2, VolumeX, Menu, X, ArrowUpRight, SlidersHorizontal } from 'luci
 import { useStudio } from '../../context/StudioContext';
 import { PageRoute } from '../../types';
 
+import { BrainchildLogo } from '../common/BrainchildLogo';
+
 export const Navbar: React.FC = () => {
   const { currentRoute, setCurrentRoute, isCmsOpen, setIsCmsOpen, isAudioActive, toggleAudio } = useStudio();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -34,35 +36,20 @@ export const Navbar: React.FC = () => {
       id="main-header"
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
         isScrolled
-          ? 'bg-[#090a0d]/90 backdrop-blur-md border-b border-white/10 py-3.5 shadow-2xl'
-          : 'bg-transparent py-6'
+          ? 'bg-[#090a0d]/90 backdrop-blur-md border-b border-white/10 py-2.5 shadow-2xl'
+          : 'bg-transparent py-4'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12">
         <div className="flex items-center justify-between">
-          {/* Studio Brand Wordmark */}
+          {/* Studio Official Brand Logo with Astronaut Mascot */}
           <button
             id="brand-logo-btn"
             onClick={() => handleNavClick('home')}
-            className="flex items-center gap-3.5 text-left group cursor-pointer"
+            className="flex items-center text-left group cursor-pointer focus:outline-none"
+            aria-label="Brainchild Games Home"
           >
-            <div className="w-8 h-8 rounded-lg bg-[#141622] border border-white/15 group-hover:border-[#ff5722] flex items-center justify-center overflow-hidden transition-colors duration-300">
-              <img
-                src="/src/assets/images/mascot_astro_1789202807233.jpg"
-                alt="Brainchild"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-
-            <div className="flex flex-col">
-              <span className="font-display font-black text-sm tracking-wider text-white uppercase group-hover:text-[#ff5722] transition-colors leading-none">
-                BRAINCHILD
-              </span>
-              <span className="text-[9px] uppercase tracking-[0.25em] text-zinc-400 font-mono mt-1">
-                GAMES STUDIO
-              </span>
-            </div>
+            <BrainchildLogo variant="navbar" animated={true} />
           </button>
 
           {/* Clean Editorial Navigation Links */}
