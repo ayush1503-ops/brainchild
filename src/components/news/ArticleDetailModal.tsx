@@ -1,6 +1,9 @@
 import React from 'react';
-import { X, Clock, User, Share2, Tag, BookOpen } from 'lucide-react';
+import { X, Clock, User, Share2, Tag } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Article } from '../../types';
+import { useStudio } from '../../context/StudioContext';
+import { ARTICLE_COLORS } from '../../utils/catalog';
 
 interface ArticleDetailModalProps {
   article: Article | null;
@@ -8,118 +11,103 @@ interface ArticleDetailModalProps {
 }
 
 export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({ article, onClose }) => {
+  const { notify } = useStudio();
   if (!article) return null;
 
   return (
     <div
       id="article-detail-modal"
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/90 backdrop-blur-xl flex items-start justify-center p-2 sm:p-6 lg:p-10 animate-in fade-in duration-200"
+      className="fixed inset-0 z-[70] overflow-y-auto bg-ink/50 p-2 backdrop-blur-sm sm:p-6 lg:p-10"
+      onClick={onClose}
     >
-      <div className="relative w-full max-w-4xl rounded-3xl bg-[#0e1017] border border-white/15 shadow-2xl overflow-hidden text-white my-auto">
-        {/* Close Button */}
+      <motion.div
+        initial={{ opacity: 0, y: 28, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative mx-auto my-auto w-full max-w-4xl overflow-hidden rounded-[32px] border-2 border-ink bg-paper shadow-lift"
+      >
         <button
           onClick={onClose}
-          className="absolute top-6 right-6 z-30 p-3 rounded-full bg-black/70 hover:bg-[#ff5722] text-white border border-white/20 transition-colors cursor-pointer"
+          className="absolute right-5 top-5 z-30 grid h-11 w-11 place-items-center rounded-full border-2 border-ink bg-cream text-ink shadow-sticker-sm transition-all hover:bg-coral hover:text-white cursor-pointer"
           aria-label="Close article"
         >
-          <X size={20} />
+          <X size={19} />
         </button>
 
-        {/* Cover Image */}
+        {/* Cover */}
         <div className="relative aspect-[21/9] w-full overflow-hidden">
-          <img
-            src={article.coverImage}
-            alt={article.title}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0e1017] via-[#0e1017]/30 to-transparent" />
-          <div className="absolute top-6 left-6">
-            <span className="px-3.5 py-1.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-[#ff5722] text-white">
-              {article.category}
-            </span>
-          </div>
+          <img src={article.coverImage} alt={article.title} className="h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-transparent to-transparent" aria-hidden="true" />
+          <span className={`absolute left-6 top-6 -rotate-2 rounded-full border-2 border-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wider shadow-sticker-sm ${ARTICLE_COLORS[article.category]}`}>
+            {article.category}
+          </span>
         </div>
 
-        {/* Article Body */}
-        <div className="p-6 sm:p-10 lg:p-12 space-y-8">
-          {/* Metadata & Headline */}
-          <div className="space-y-4 border-b border-white/10 pb-8">
-            <div className="flex items-center gap-4 text-xs font-mono text-zinc-400">
+        <div className="space-y-8 p-6 sm:p-10 lg:p-12">
+          {/* Meta + title */}
+          <div className="space-y-4 border-b-2 border-dashed border-ink/15 pb-8">
+            <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-wider text-inksoft">
               <span>{article.date}</span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5 text-[#22d3ee]">
+              <span className="h-1 w-1 rounded-full bg-ink/30" />
+              <span className="inline-flex items-center gap-1.5 text-grape">
                 <Clock size={12} /> {article.readTime}
               </span>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-display font-black text-white uppercase tracking-tight leading-tight">
+            <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
               {article.title}
             </h1>
 
-            {/* Author info */}
-            <div className="flex items-center justify-between pt-4">
+            <div className="flex items-center justify-between gap-4 pt-2">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#181a26] border border-[#ff5722]/50 flex items-center justify-center text-[#ff5722]">
+                <span className="grid h-11 w-11 place-items-center rounded-2xl border-2 border-ink bg-sun text-ink shadow-sticker-sm">
                   <User size={18} />
-                </div>
+                </span>
                 <div>
-                  <div className="text-sm font-editorial font-bold text-white">
-                    {article.author.name}
-                  </div>
-                  <div className="text-xs text-zinc-400 font-mono">
-                    {article.author.role}
-                  </div>
+                  <div className="text-sm font-extrabold text-ink">{article.author.name}</div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-inksoft">{article.author.role}</div>
                 </div>
               </div>
-
               <button
                 onClick={() => {
                   navigator.clipboard?.writeText(window.location.href);
-                  alert('Article link copied to clipboard!');
+                  notify('Link copied — share the good stuff!');
                 }}
-                className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 transition-colors"
-                title="Share link"
+                className="grid h-11 w-11 place-items-center rounded-xl border-2 border-ink bg-cream text-ink transition-all hover:-translate-y-0.5 hover:bg-grape hover:text-white cursor-pointer"
+                title="Copy link"
               >
                 <Share2 size={16} />
               </button>
             </div>
           </div>
 
-          {/* Editorial Content */}
-          <div className="prose prose-invert max-w-none space-y-6 text-zinc-300 font-sans leading-relaxed text-base sm:text-lg">
-            {article.content.split('\n\n').map((para, i) => {
-              if (para.startsWith('### ')) {
-                return (
-                  <h3 key={i} className="text-xl sm:text-2xl font-display font-bold text-white pt-4 text-[#22d3ee]">
-                    {para.replace('### ', '')}
-                  </h3>
-                );
-              }
-              return (
-                <p key={i} className="leading-relaxed">
-                  {para}
-                </p>
-              );
-            })}
+          {/* Body */}
+          <div className="space-y-5 text-base font-medium leading-relaxed text-inksoft sm:text-lg">
+            {article.content.split('\n\n').map((para, i) =>
+              para.startsWith('### ') ? (
+                <h3 key={i} className="pt-4 font-display text-xl font-extrabold text-grape sm:text-2xl">
+                  {para.replace('### ', '')}
+                </h3>
+              ) : (
+                <p key={i}>{para}</p>
+              )
+            )}
           </div>
 
           {/* Tags */}
-          <div className="pt-8 border-t border-white/10 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-mono text-zinc-500 mr-2 flex items-center gap-1">
-              <Tag size={12} /> TAGS:
+          <div className="flex flex-wrap items-center gap-2 border-t-2 border-dashed border-ink/15 pt-7">
+            <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-widest text-inksoft">
+              <Tag size={12} /> Tags
             </span>
             {article.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-3 py-1 rounded-full text-xs font-mono bg-white/5 border border-white/10 text-zinc-300"
-              >
+              <span key={tag} className="rounded-full border-2 border-ink/15 bg-cream px-3.5 py-1 text-xs font-bold text-inksoft">
                 #{tag}
               </span>
             ))}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
