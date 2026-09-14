@@ -1,4 +1,14 @@
-export type PageRoute = 'home' | 'games' | 'news' | 'about' | 'careers' | 'contact';
+export type PageRoute = 'home' | 'games' | 'news' | 'blog' | 'about' | 'careers' | 'contact';
+
+export type GameCategory =
+  | 'Action'
+  | 'Puzzle'
+  | 'Racing'
+  | 'Adventure'
+  | 'Sports'
+  | 'RPG'
+  | 'Horror'
+  | 'Indie';
 
 export interface Game {
   id: string;
@@ -6,6 +16,9 @@ export interface Game {
   title: string;
   subtitle: string;
   genre: string;
+  categories?: GameCategory[];
+  rating?: number;
+  price?: string;
   platforms: string[];
   status: 'In Development' | 'Early Access' | 'Wishlist Now' | 'Available Now';
   releaseYear: string;
