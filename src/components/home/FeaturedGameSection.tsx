@@ -6,7 +6,7 @@ import { platformShort } from '../../utils/catalog';
 import { TrophyBit, CoinBit } from '../ui/Bits';
 
 export const FeaturedGameSection: React.FC = () => {
-  const { games, setSelectedGame, toggleWishlist, isWishlisted } = useStudio();
+  const { games, setSelectedGame, toggleWishlist, isWishlisted, setCurrentRoute } = useStudio();
   const featured = games.find((g) => g.featured) || games[0];
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
@@ -72,7 +72,7 @@ export const FeaturedGameSection: React.FC = () => {
 
               <div className="flex flex-wrap items-center gap-4 pt-2">
                 <button
-                  onClick={() => setSelectedGame(featured)}
+                  onClick={() => setCurrentRoute('games')}
                   className="group inline-flex items-center gap-2.5 rounded-xl border-2 border-ink bg-coral px-7 py-4 text-sm font-extrabold uppercase tracking-wide text-white shadow-sticker transition-all hover:-translate-y-1 hover:bg-coraldeep hover:shadow-[6px_6px_0_0_var(--color-ink)] active:translate-y-0 cursor-pointer"
                 >
                   <Play size={15} className="fill-white" /> Play now
