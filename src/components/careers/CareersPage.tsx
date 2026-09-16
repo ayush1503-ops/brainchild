@@ -45,7 +45,7 @@ export const CareersPage: React.FC = () => {
             <p className="mt-6 max-w-xl text-base font-medium leading-relaxed text-inksoft sm:text-lg">
               We hire curious engineers, environment sculptors, word wizards and audio alchemists who
               want their craft to define a genre. Applications are read by humans, replied to by
-              humans, and never sent to an AI recruiter. Ever.
+              humans. No automated filtering. Ever.
             </p>
           </Reveal>
 
