@@ -1,6 +1,0 @@
-{
-  "name": "Brainchild Games",
-  "description": "An independent game studio crafting strange places, memorable characters, and immersive digital worlds.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
