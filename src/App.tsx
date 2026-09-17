@@ -21,7 +21,6 @@ import { NewsPage as PublicNewsPage } from './components/news/NewsPage';
 import { AboutPage as PublicAboutPage } from './components/about/AboutPage';
 import { CareersPage as PublicCareersPage } from './components/careers/CareersPage';
 import { ContactPage as PublicContactPage } from './components/contact/ContactPage';
-import { StudioCMSModal } from './components/cms/StudioCMSModal';
 import { GameDetailModal } from './components/games/GameDetailModal';
 import { ArticleDetailModal } from './components/news/ArticleDetailModal';
 import { JobDetailModal } from './components/careers/JobDetailModal';
@@ -76,7 +75,6 @@ const PublicApp: React.FC = () => {
       <SignatureFooter />
 
       {/* Global overlays */}
-      <StudioCMSModal />
       {selectedGame && <GameDetailModal game={selectedGame} onClose={() => setSelectedGame(null)} />}
       {selectedArticle && <ArticleDetailModal article={selectedArticle} onClose={() => setSelectedArticle(null)} />}
       {selectedJob && <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />}

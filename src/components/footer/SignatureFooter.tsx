@@ -4,6 +4,16 @@ import { useStudio } from '../../context/StudioContext';
 import { PageRoute } from '../../types';
 import { Squiggle, ControllerBit, DiceBit, CoinBit } from '../ui/Bits';
 
+/** Fallbacks — the “footer.studio” block in the CMS overrides these. */
+const DEFAULT_FOOTER = {
+  tagline: 'Handmade with too many snacks in Montreal, QC. Every gravity equation double-checked by Pix.',
+  copyright: '© 2019–2026 Brainchild Games Inc.',
+  discordNote: '18,000 players hang out in our Discord. The pizza channel is strictly off-limits.',
+  credits: 'Made with ♥ and Unreal Engine 5',
+  about:
+    'An independent studio crafting warm, kinetic, slightly quirky worlds for players who like their games handmade. Always independent, always player-first.',
+};
+
 const EXPLORE: { label: string; route: PageRoute }[] = [
   { label: 'Games', route: 'games' },
   { label: 'News', route: 'news' },
@@ -16,7 +26,9 @@ const STUDIO: { label: string; route: PageRoute }[] = [
 ];
 
 export const SignatureFooter: React.FC = () => {
-  const { setCurrentRoute, setIsCmsOpen } = useStudio();
+  const { setCurrentRoute, setIsCmsOpen, block, setting } = useStudio();
+  const studio = block('footer.studio', DEFAULT_FOOTER);
+  const audience = setting('site.audience', { discordMembers: 18000 });
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -35,8 +47,7 @@ export const SignatureFooter: React.FC = () => {
               <Squiggle color="#FF5A3C" className="mt-3 block h-4 w-56 sm:w-80" />
             </h2>
             <p className="mt-6 max-w-md text-sm font-medium leading-relaxed text-paper/70">
-              Handmade with too many snacks in Montreal, QC. Every gravity equation double-checked
-              by Pix.
+              {studio.tagline}
             </p>
           </div>
 
@@ -69,11 +80,10 @@ export const SignatureFooter: React.FC = () => {
               </div>
             </div>
             <p className="max-w-sm text-xs font-medium leading-relaxed text-paper/65">
-              An independent studio crafting warm, kinetic, slightly quirky worlds for players who
-              like their games handmade. Always independent, always player-first.
+              {studio.about}
             </p>
             <button
-              onClick={() => setIsCmsOpen(true)}
+              onClick={() => window.location.assign('/admin')}
               className="inline-flex items-center gap-1.5 rounded-lg border-2 border-paper/25 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-paper/70 transition-colors hover:border-sun hover:text-sun cursor-pointer"
             >
               <Terminal size={12} /> Studio CMS
@@ -133,14 +143,14 @@ export const SignatureFooter: React.FC = () => {
                 </a>
               ))}
             </div>
-            <p className="mt-4 text-xs font-medium text-paper/60">18,000 players hang out in our Discord. The pizza channel is strictly off-limits.</p>
+            <p className="mt-4 text-xs font-medium text-paper/60">{studio.discordNote}</p>
           </div>
         </div>
 
         {/* Legal bar */}
         <div className="flex flex-col items-center justify-between gap-4 border-t-2 border-paper/15 pt-7 text-[11px] font-bold uppercase tracking-wider text-paper/55 sm:flex-row">
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-            <span>© 2019–2026 Brainchild Games Inc.</span>
+            <span>{studio.copyright}</span>
             <span className="hidden sm:inline text-paper/30">•</span>
             <button className="transition-colors hover:text-sun cursor-pointer">Privacy</button>
             <span className="hidden sm:inline text-paper/30">•</span>

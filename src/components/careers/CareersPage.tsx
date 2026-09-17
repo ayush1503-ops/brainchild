@@ -6,17 +6,22 @@ import { useStudio } from '../../context/StudioContext';
 import { Reveal } from '../ui/Reveal';
 import { Squiggle, DiceBit, CoinBit } from '../ui/Bits';
 
-const BENEFITS = [
+/** Fallbacks — the “careers.intro” block in the CMS overrides these. */
+const DEFAULT_BENEFITS = [
   { emoji: '🗓️', title: '4-day work week', desc: 'Monday–Thursday, 36 hours. Fridays are for playing games, hiking, family, or forbidden prototypes.' },
   { emoji: '💰', title: 'Real profit sharing', desc: '15% of net revenue from every game is pooled and split equally across the team. No fine print.' },
   { emoji: '🛑', title: 'Zero crunch culture', desc: 'We scope games to fit life, not the other way around. Milestones move before sleep does.' },
   { emoji: '🌍', title: 'Remote-first, human-always', desc: '$4k hardware budget, health & dental coverage, and one annual cabin retreat with board games.' }
 ];
+const DEFAULT_CAREERS = { lead: '', applicationNote: 'Applications read by humans · reply within a week', applyEmail: 'jobs@brainchild.games', benefits: DEFAULT_BENEFITS };
 
 const DEPTS = ['ALL', 'Engineering', 'Art & Animation', 'Game Design', 'Audio'];
 
 export const CareersPage: React.FC = () => {
-  const { jobs, setSelectedJob } = useStudio();
+  const { jobs, setSelectedJob, block } = useStudio();
+  const careers = block('careers.intro', DEFAULT_CAREERS);
+  const BENEFITS = careers.benefits?.length ? careers.benefits : DEFAULT_BENEFITS;
+  const applyEmail = careers.applyEmail || 'jobs@brainchild.games';
   const [dept, setDept] = useState('ALL');
 
   const filtered = jobs.filter((j) => (dept === 'ALL' ? true : j.department === dept));
@@ -144,10 +149,10 @@ export const CareersPage: React.FC = () => {
               </p>
             </div>
             <a
-              href="mailto:jobs@brainchild.games"
+              href={`mailto:${applyEmail}`}
               className="inline-flex shrink-0 items-center gap-2 rounded-xl border-2 border-paper bg-coral px-6 py-3.5 text-xs font-extrabold uppercase tracking-wider text-white shadow-[4px_4px_0_0_var(--color-paper)] transition-all hover:-translate-y-1 hover:bg-coraldeep"
             >
-              jobs@brainchild.games <ArrowRight size={14} />
+              {applyEmail} <ArrowRight size={14} />
             </a>
           </div>
         </Reveal>

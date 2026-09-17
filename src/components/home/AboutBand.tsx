@@ -4,14 +4,30 @@ import { useStudio } from '../../context/StudioContext';
 import { Reveal } from '../ui/Reveal';
 import { Squiggle, ControllerBit, StarSticker } from '../ui/Bits';
 
-const VALUES = [
-  { icon: Gamepad2, color: 'bg-grape text-white', title: 'Play first', text: 'If a mechanic isn’t fun in a greybox in 15 seconds, we start over.' },
-  { icon: Users, color: 'bg-coral text-white', title: 'Small crew', text: '28 artists, coders and composers. No assembly lines, no filler.' },
-  { icon: HeartHandshake, color: 'bg-lime text-ink', title: 'Human pace', text: '4-day work week. Rested people make better worlds.' }
+/** Fallbacks — the “home.values” block in the CMS overrides these. */
+const VALUE_ICONS = { gamepad: Gamepad2, users: Users, heart: HeartHandshake } as const;
+const VALUE_COLORS = ['bg-grape text-white', 'bg-coral text-white', 'bg-lime text-ink'];
+const DEFAULT_VALUES = [
+  { icon: 'gamepad', title: 'Play first', text: 'If a mechanic isn’t fun in a greybox in 15 seconds, we start over.' },
+  { icon: 'users', title: 'Small crew', text: '28 artists, coders and composers. No assembly lines, no filler.' },
+  { icon: 'heart', title: 'Human pace', text: '4-day work week. Rested people make better worlds.' }
 ];
+const DEFAULT_BAND = {
+  lead:
+    'Brainchild started in a Montreal basement in 2019 with two devs, one manifest and a pizza oven we still regret buying. Today we are 28 people who believe games are the warmest medium ever invented — and that a world should hug you back.',
+  crewBadge: '28 creators',
+  studioCaption: 'Studio floor · Montreal',
+};
 
 export const AboutBand: React.FC = () => {
-  const { setCurrentRoute } = useStudio();
+  const { setCurrentRoute, block } = useStudio();
+  const band = block('home.about_band', DEFAULT_BAND);
+  const values = (block('home.values', { items: DEFAULT_VALUES }).items ?? DEFAULT_VALUES).map((item, index) => ({
+    icon: VALUE_ICONS[(item.icon as keyof typeof VALUE_ICONS) ?? 'gamepad'] ?? Gamepad2,
+    color: VALUE_COLORS[index % VALUE_COLORS.length],
+    title: item.title,
+    text: item.text,
+  }));
 
   return (
     <section id="about-band" className="relative overflow-hidden py-24 sm:py-28">
@@ -32,13 +48,11 @@ export const AboutBand: React.FC = () => {
               </span>
             </h2>
             <p className="mt-6 max-w-lg text-base font-medium leading-relaxed text-inksoft">
-              Brainchild started in a Montreal basement in 2019 with two devs, one manifest and a
-              pizza oven we still regret buying. Today we are 28 people who believe games are the
-              warmest medium ever invented — and that a world should hug you back.
+              {band.lead}
             </p>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              {VALUES.map((v) => (
+              {values.map((v) => (
                 <div
                   key={v.title}
                   className="rounded-2xl border-2 border-ink/10 bg-cream p-4 shadow-soft transition-all duration-200 hover:-translate-y-1 hover:border-ink/25 hover:shadow-lift"
@@ -72,7 +86,7 @@ export const AboutBand: React.FC = () => {
                 />
                 <div className="flex items-center justify-between px-2 pb-1 pt-3">
                   <span className="text-[11px] font-extrabold uppercase tracking-widest text-inksoft">
-                    Studio floor · Montreal
+                    {band.studioCaption}
                   </span>
                   <StarSticker className="w-5 animate-wiggle" />
                 </div>
@@ -88,7 +102,7 @@ export const AboutBand: React.FC = () => {
                 Est. 2019
               </span>
               <span className="absolute -right-6 top-24 hidden -rotate-3 rounded-full border-2 border-ink bg-grape px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-white shadow-sticker-sm animate-float sm:block">
-                28 creators
+                {band.crewBadge}
               </span>
               <div className="absolute -left-8 top-6 hidden lg:block" aria-hidden="true">
                 <ControllerBit className="w-16 animate-float-slow" />

@@ -10,7 +10,8 @@ interface JobDetailModalProps {
 }
 
 export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) => {
-  const { notify } = useStudio();
+  const { notify, block } = useStudio();
+  const applyEmail = block('careers.intro', { applyEmail: 'jobs@brainchild.games' }).applyEmail || 'jobs@brainchild.games';
   if (!job) return null;
 
   return (
@@ -124,7 +125,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) 
               Applications read by humans · reply within a week
             </p>
             <a
-              href={`mailto:jobs@brainchild.games?subject=${encodeURIComponent(`Application: ${job.title}`)}`}
+              href={`mailto:${applyEmail}?subject=${encodeURIComponent(`Application: ${job.title}`)}`}
               onClick={() => notify('Opening your mail app — good luck, hero!')}
               className="group inline-flex items-center gap-2.5 rounded-xl border-2 border-ink bg-coral px-7 py-4 text-sm font-extrabold uppercase tracking-wide text-white shadow-sticker transition-all hover:-translate-y-1 hover:bg-coraldeep hover:shadow-[6px_6px_0_0_var(--color-ink)] active:translate-y-0"
             >

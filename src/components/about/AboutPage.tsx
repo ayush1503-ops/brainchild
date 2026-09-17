@@ -2,11 +2,22 @@ import React, { useState } from 'react';
 import { ArrowRight, Award, Heart, Gamepad2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { STUDIO_TIMELINE, TEAM_MEMBERS } from '../../data/initialData';
+
+/** Fallbacks — the matching CMS blocks override every one of these. */
+const DEFAULT_ABOUT_HERO = {
+  badge: '❤️ Our story · 2019 → today',
+  lead:
+    'Brainchild Games began around a wobbly kitchen table in Montreal, founded by two developers who wanted out of assembly-line production. Today we are 28 artists, physicists, composers and professional bell-ringers, united by one obsession: building places worth visiting twice.',
+  mission:
+    'Our mission is simple to say and hard to do — make worlds that hug you back. Games that respect your time, reward your curiosity, and leave you humming their theme song in the grocery store.',
+  teamBadge: '28 humans',
+};
+const DEFAULT_TEAM = TEAM_MEMBERS;
 import { useStudio } from '../../context/StudioContext';
 import { Reveal } from '../ui/Reveal';
 import { Squiggle, StarSticker, ControllerBit, TrophyBit } from '../ui/Bits';
 
-const PHILOSOPHIES = [
+const DEFAULT_PHILOSOPHY = [
   {
     emoji: '🎮',
     title: 'Play over polish, until polish feels like play',
@@ -25,9 +36,13 @@ const PHILOSOPHIES = [
 ];
 
 export const AboutPage: React.FC = () => {
-  const { setCurrentRoute } = useStudio();
+  const { setCurrentRoute, block } = useStudio();
+  const aboutHero = block('about.hero', DEFAULT_ABOUT_HERO);
+  const TIMELINE = block('about.timeline', { items: STUDIO_TIMELINE }).items ?? STUDIO_TIMELINE;
+  const PHILOSOPHY = block('about.philosophy', { items: DEFAULT_PHILOSOPHY }).items ?? DEFAULT_PHILOSOPHY;
+  const TEAM = block('about.team', { members: DEFAULT_TEAM }).members ?? DEFAULT_TEAM;
   const [activeIdx, setActiveIdx] = useState(0);
-  const active = STUDIO_TIMELINE[activeIdx];
+  const active = TIMELINE[activeIdx];
 
   return (
     <div id="about-page" className="relative min-h-screen overflow-hidden pt-32 pb-24 sm:pt-36">
@@ -39,7 +54,7 @@ export const AboutPage: React.FC = () => {
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12">
           <Reveal className="lg:col-span-7">
             <span className="inline-flex -rotate-1 items-center gap-2 rounded-full border-2 border-ink bg-grape px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-white shadow-sticker-sm">
-              ❤️ Our story · 2019 → today
+              {aboutHero.badge}
             </span>
             <h1 className="mt-6 font-display text-5xl font-extrabold uppercase leading-[0.92] tracking-tight text-ink sm:text-7xl">
               We make games worth{' '}
@@ -49,15 +64,10 @@ export const AboutPage: React.FC = () => {
               </span>
             </h1>
             <p className="mt-7 max-w-xl text-base font-medium leading-relaxed text-inksoft sm:text-lg">
-              Brainchild Games began around a wobbly kitchen table in Montreal, founded by two
-              developers who wanted out of assembly-line production. Today we are 28 artists,
-              physicists, composers and professional bell-ringers, united by one obsession: building
-              places worth visiting twice.
+              {aboutHero.lead}
             </p>
             <p className="mt-4 max-w-xl text-sm font-medium leading-relaxed text-inksoft">
-              Our mission is simple to say and hard to do — make worlds that hug you back. Games
-              that respect your time, reward your curiosity, and leave you humming their theme song
-              in the grocery store.
+              {aboutHero.mission}
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -87,7 +97,7 @@ export const AboutPage: React.FC = () => {
                 <img src="/src/assets/images/mascot_pix.png" alt="Pix the mascot" className="w-full rounded-2xl" />
               </div>
               <span className="absolute -left-4 -top-5 -rotate-6 rounded-full border-2 border-ink bg-lime px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-ink shadow-sticker-sm animate-bob">
-                28 humans
+                {aboutHero.teamBadge}
               </span>
               <div className="absolute -left-10 bottom-10 hidden lg:block" aria-hidden="true">
                 <ControllerBit className="w-14 animate-float-slow" />
@@ -134,7 +144,7 @@ export const AboutPage: React.FC = () => {
           </Reveal>
 
           <Reveal delay={0.05} className="flex flex-wrap gap-2.5">
-            {STUDIO_TIMELINE.map((item, idx) => (
+            {TIMELINE.map((item, idx) => (
               <button
                 key={item.year}
                 onClick={() => setActiveIdx(idx)}
@@ -190,7 +200,7 @@ export const AboutPage: React.FC = () => {
           </Reveal>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {PHILOSOPHIES.map((p, i) => (
+            {PHILOSOPHY.map((p, i) => (
               <Reveal key={p.title} delay={0.06 * i}>
                 <div className="flex h-full flex-col justify-between gap-6 rounded-[26px] border-2 border-ink/10 bg-cream p-7 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-ink/30 hover:shadow-lift">
                   <div className="space-y-3">
@@ -227,7 +237,7 @@ export const AboutPage: React.FC = () => {
           </Reveal>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {TEAM_MEMBERS.map((m, i) => (
+            {TEAM.map((m, i) => (
               <Reveal key={m.name} delay={0.06 * i}>
                 <div className="group flex h-full flex-col justify-between gap-5 rounded-[26px] border-2 border-ink/10 bg-cream p-6 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-ink/30 hover:shadow-lift">
                   <div className="space-y-3">
