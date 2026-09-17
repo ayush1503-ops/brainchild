@@ -14,18 +14,30 @@ import {
 } from '../ui/Bits';
 import { platformShort, statusColor } from '../../utils/catalog';
 
-const TICKER = [
-  'Aetherbound lands Q4 2026',
-  'Good games. Good times.',
-  'Solaris Diver 0.8 is live',
-  'Player-first, always',
-  '4-day work week studio',
-  'Void Protocol alpha soon',
-  'Handmade in Montreal'
-];
+/** Fallback text — overridden by the “home.hero” block in the CMS. */
+const DEFAULT_HERO = {
+  studioLine: 'Independent game studio · Montreal',
+  est: 'Est. 2019',
+  worlds: '4 handmade worlds',
+  motto: 'Pix approved ✓',
+  rating: '4.8 average rating',
+  players: '120k players',
+  madeIn: 'Made in Montreal',
+  ticker: [
+    'Aetherbound lands Q4 2026',
+    'Good games. Good times.',
+    'Solaris Diver 0.8 is live',
+    'Player-first, always',
+    '4-day work week studio',
+    'Void Protocol alpha soon',
+    'Handmade in Montreal',
+  ],
+};
 
 export const HeroSection: React.FC = () => {
-  const { setCurrentRoute, games, setSelectedGame, toggleWishlist, isWishlisted } = useStudio();
+  const { setCurrentRoute, games, setSelectedGame, toggleWishlist, isWishlisted, block } = useStudio();
+  const hero = block('home.hero', DEFAULT_HERO);
+  const ticker = hero.ticker?.length ? hero.ticker : DEFAULT_HERO.ticker;
   const featured = games.find((g) => g.featured) || games[0];
 
   // Pointer position (0..1) over the hero stage
@@ -88,14 +100,14 @@ export const HeroSection: React.FC = () => {
         <div className="flex items-center justify-between text-[11px] font-extrabold uppercase tracking-[0.22em] text-inksoft">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-coral animate-bob" />
-            <span className="text-ink">Independent game studio · Montreal</span>
+            <span className="text-ink">{hero.studioLine}</span>
           </div>
           <div className="hidden items-center gap-4 sm:flex">
-            <span>Est. 2019</span>
+            <span>{hero.est}</span>
             <span className="h-1 w-1 rounded-full bg-ink/30" />
-            <span>4 handmade worlds</span>
+            <span>{hero.worlds}</span>
             <span className="h-1 w-1 rounded-full bg-ink/30" />
-            <span className="text-grape">Pix approved ✓</span>
+            <span className="text-grape">{hero.motto}</span>
           </div>
         </div>
       </div>
@@ -170,14 +182,14 @@ export const HeroSection: React.FC = () => {
               className="mt-9 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-bold uppercase tracking-wider text-inksoft"
             >
               <span className="inline-flex items-center gap-1.5">
-                <Star size={13} className="fill-sun text-sun" /> 4.8 average rating
+                <Star size={13} className="fill-sun text-sun" /> {hero.rating}
               </span>
               <span className="h-1 w-1 rounded-full bg-ink/30" />
-              <span>120k players</span>
+              <span>{hero.players}</span>
               <span className="h-1 w-1 rounded-full bg-ink/30" />
-              <span>4 handmade worlds</span>
+              <span>{hero.worlds}</span>
               <span className="h-1 w-1 rounded-full bg-ink/30" />
-              <span>Made in Montreal</span>
+              <span>{hero.madeIn}</span>
             </motion.div>
           </div>
 
@@ -327,7 +339,7 @@ export const HeroSection: React.FC = () => {
       {/* Ticker marquee */}
       <div className="relative -rotate-1 border-y-2 border-ink bg-ink py-3.5">
         <div className="flex w-max animate-marquee items-center gap-10 pr-10">
-          {[...TICKER, ...TICKER].map((item, i) => (
+          {[...ticker, ...ticker].map((item, i) => (
             <span key={i} className="flex items-center gap-10 text-xs font-extrabold uppercase tracking-[0.2em] text-paper">
               {item}
               <StarSticker className="w-4" />

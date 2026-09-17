@@ -1,86 +1,167 @@
 import { Router, Response } from 'express';
-import prisma from '../utils/prisma.js';
-import { asyncHandler, AppError } from '../middleware/errorHandler.js';
-import { authMiddleware, AuthRequest, requirePermission } from '../middleware/auth.js';
-import { categorySchema } from '../validators/index.js';
-import { logActivity, createActivityLogger } from '../services/activity.js';
+import { and, asc, count, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
+import { db } from '../db/index.js';
+import { categories, newsPosts } from '../db/schema.js';
+import { AppError, asyncHandler } from '../middleware/errors.js';
+import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { idSchema } from '../middleware/validate.js';
+import { audit } from '../services/activity.js';
+import { cleanText } from '../utils/sanitize.js';
 
 const router = Router();
+router.use(authenticate);
 
-router.get('/', asyncHandler(async (_req, res) => {
-  const categories = await prisma.category.findMany({
-    orderBy: { name: 'asc' },
-    include: { _count: { select: { newsPosts: true } } }
-  });
-  res.json({ categories });
-}));
+const categorySchema = z
+  .object({
+    name: z.string().trim().min(2).max(60),
+    slug: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z0-9-]{2,60}$/, 'Use lowercase letters, numbers and dashes')
+      .optional(),
+    color: z
+      .string()
+      .trim()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'Use a 6-digit hex colour like #FF5A3C')
+      .default('#FF5A3C'),
+  })
+  .strict();
 
-router.get('/:id', asyncHandler(async (req, res) => {
-  const category = await prisma.category.findUnique({
-    where: { id: req.params.id },
-    include: { _count: { select: { newsPosts: true } } }
-  });
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .slice(0, 60);
+}
 
-  if (!category) {
-    throw new AppError(404, 'Category not found');
-  }
+/** GET /api/admin/categories */
+router.get(
+  '/',
+  requirePermission('categories:read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const rows = await db
+      .select({
+        id: categories.id,
+        name: categories.name,
+        slug: categories.slug,
+        color: categories.color,
+        postCount: count(newsPosts.id),
+      })
+      .from(categories)
+      .leftJoin(newsPosts, eq(newsPosts.categoryId, categories.id))
+      .groupBy(categories.id)
+      .orderBy(asc(categories.name));
 
-  res.json({ category });
-}));
+    res.json({ categories: rows.map((row) => ({ ...row, postCount: Number(row.postCount) })) });
+  })
+);
 
-router.post('/', authMiddleware, requirePermission('categories:create'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const data = categorySchema.parse(req.body);
+/** POST /api/admin/categories */
+router.post(
+  '/',
+  requirePermission('categories:create'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const data = categorySchema.parse(req.body);
+    const slug = data.slug ?? slugify(data.name);
+    if (!slug) throw new AppError(400, 'Could not derive a URL slug from that name.', 'invalid_slug');
 
-  const existing = await prisma.category.findUnique({ where: { slug: data.slug } });
-  if (existing) {
-    throw new AppError(409, 'Slug already exists');
-  }
+    const [created] = await db
+      .insert(categories)
+      .values({
+        name: cleanText(data.name, 60),
+        slug,
+        color: data.color.toUpperCase(),
+      })
+      .returning();
 
-  const category = await prisma.category.create({ data });
+    audit(req)('CATEGORY_CREATED', 'category', {
+      entityId: created.id,
+      summary: `Created category “${created.name}”`,
+    });
 
-  const logger = createActivityLogger(req);
-  logger('CREATE_CATEGORY', 'category', category.id, { name: category.name });
+    res.status(201).json({ category: { ...created, postCount: 0 } });
+  })
+);
 
-  res.status(201).json({ category });
-}));
+/** PATCH /api/admin/categories/:id */
+router.patch(
+  '/:id',
+  requirePermission('categories:update'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const id = idSchema.parse(req.params.id);
+    const data = categorySchema.partial().parse(req.body);
 
-router.patch('/:id', authMiddleware, requirePermission('categories:update'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const data = categorySchema.partial().parse(req.body);
+    const [existing] = await db.select().from(categories).where(eq(categories.id, id)).limit(1);
+    if (!existing) throw new AppError(404, 'That category no longer exists.', 'not_found');
 
-  if (data.slug) {
-    const existing = await prisma.category.findUnique({ where: { slug: data.slug } });
-    if (existing && existing.id !== id) {
-      throw new AppError(409, 'Slug already exists');
+    if (data.slug && data.slug !== existing.slug) {
+      const [clash] = await db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(and(eq(categories.slug, data.slug), ne(categories.id, id)))
+        .limit(1);
+      if (clash) throw new AppError(409, 'Another category already uses that slug.', 'duplicate');
     }
-  }
 
-  const category = await prisma.category.update({
-    where: { id },
-    data
-  });
+    const [updated] = await db
+      .update(categories)
+      .set({
+        ...(data.name !== undefined ? { name: cleanText(data.name, 60) } : {}),
+        ...(data.slug !== undefined ? { slug: data.slug } : {}),
+        ...(data.color !== undefined ? { color: data.color.toUpperCase() } : {}),
+      })
+      .where(eq(categories.id, id))
+      .returning();
 
-  const logger = createActivityLogger(req);
-  logger('UPDATE_CATEGORY', 'category', category.id, data);
+    const [counts] = await db
+      .select({ value: count() })
+      .from(newsPosts)
+      .where(eq(newsPosts.categoryId, id));
 
-  res.json({ category });
-}));
+    audit(req)('CATEGORY_UPDATED', 'category', {
+      entityId: id,
+      summary: `Updated category “${updated.name}”`,
+    });
 
-router.delete('/:id', authMiddleware, requirePermission('categories:delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
+    res.json({ category: { ...updated, postCount: Number(counts?.value ?? 0) } });
+  })
+);
 
-  const postsCount = await prisma.newsPost.count({ where: { categoryId: id } });
-  if (postsCount > 0) {
-    throw new AppError(400, 'Cannot delete category with existing posts');
-  }
+/** DELETE /api/admin/categories/:id — blocked while posts still reference it. */
+router.delete(
+  '/:id',
+  requirePermission('categories:delete'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const id = idSchema.parse(req.params.id);
 
-  await prisma.category.delete({ where: { id } });
+    const [existing] = await db.select().from(categories).where(eq(categories.id, id)).limit(1);
+    if (!existing) throw new AppError(404, 'That category no longer exists.', 'not_found');
 
-  const logger = createActivityLogger(req);
-  logger('DELETE_CATEGORY', 'category', id);
+    const [usage] = await db.select({ value: count() }).from(newsPosts).where(eq(newsPosts.categoryId, id));
+    const used = Number(usage?.value ?? 0);
+    if (used > 0) {
+      throw new AppError(
+        409,
+        `“${existing.name}” is used by ${used} post${used === 1 ? '' : 's'}. Move them to another category first.`,
+        'category_in_use'
+      );
+    }
 
-  res.json({ success: true });
-}));
+    await db.delete(categories).where(eq(categories.id, id));
+
+    audit(req)('CATEGORY_DELETED', 'category', {
+      entityId: id,
+      summary: `Deleted category “${existing.name}”`,
+    });
+
+    res.json({ ok: true });
+  })
+);
 
 export default router;
