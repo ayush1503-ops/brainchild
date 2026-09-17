@@ -1,85 +1,72 @@
-import prisma from '../utils/prisma.js';
 import { AuthRequest } from '../middleware/auth.js';
+import { db } from '../db/index.js';
+import { adminActivity } from '../db/schema.js';
+import { logger } from '../utils/logger.js';
 
-export interface ActivityLogInput {
-  adminUserId: string;
+export interface ActivityInput {
+  adminUserId?: string | null;
+  actorEmail?: string | null;
   action: string;
   entityType: string;
-  entityId?: string;
+  entityId?: string | null;
+  summary?: string;
   metadata?: Record<string, unknown>;
-  ipAddress?: string;
-  userAgent?: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
 }
 
-export async function logActivity(input: ActivityLogInput): Promise<void> {
+/**
+ * Writes an audit record. Audit logging must never break the request itself,
+ * so failures are logged and swallowed.
+ */
+export async function recordActivity(input: ActivityInput): Promise<void> {
   try {
-    await prisma.adminActivity.create({
-      data: {
-        adminUserId: input.adminUserId,
-        action: input.action,
-        entityType: input.entityType,
-        entityId: input.entityId,
-        metadata: (input.metadata as any) || undefined,
-        ipAddress: input.ipAddress,
-        userAgent: input.userAgent
-      }
+    await db.insert(adminActivity).values({
+      adminUserId: input.adminUserId ?? null,
+      actorEmail: input.actorEmail ?? null,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId ?? null,
+      summary: input.summary ?? null,
+      metadata: (input.metadata as object) ?? null,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent?.slice(0, 400) ?? null,
+      requestId: input.requestId ?? null,
     });
   } catch (error) {
-    console.error('Failed to log activity:', error);
+    logger.error('Failed to write audit record', {
+      action: input.action,
+      entityType: input.entityType,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
-export function createActivityLogger(req: AuthRequest) {
-  return (action: string, entityType: string, entityId?: string, metadata?: Record<string, unknown>) => {
-    logActivity({
-      adminUserId: req.admin!.id,
+/** Convenience wrapper used inside routes. */
+export function audit(req: AuthRequest) {
+  return (
+    action: string,
+    entityType: string,
+    options: {
+      entityId?: string | null;
+      summary?: string;
+      metadata?: Record<string, unknown>;
+      actorEmail?: string | null;
+      adminUserId?: string | null;
+    } = {}
+  ) => {
+    void recordActivity({
+      adminUserId: options.adminUserId ?? req.admin?.id ?? null,
+      actorEmail: options.actorEmail ?? req.admin?.email ?? null,
       action,
       entityType,
-      entityId,
-      metadata,
+      entityId: options.entityId,
+      summary: options.summary,
+      metadata: options.metadata,
       ipAddress: req.ip,
-      userAgent: req.get('user-agent')
+      userAgent: req.get('user-agent'),
+      requestId: (req as AuthRequest & { id?: string }).id,
     });
   };
-}
-
-export async function getRecentActivity(limit = 20) {
-  return prisma.adminActivity.findMany({
-    take: limit,
-    orderBy: { createdAt: 'desc' },
-    include: {
-      adminUser: {
-        select: { id: true, name: true, email: true }
-      }
-    }
-  });
-}
-
-export async function getActivityStats() {
-  const [total, today, thisWeek] = await Promise.all([
-    prisma.adminActivity.count(),
-    prisma.adminActivity.count({
-      where: {
-        createdAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0))
-        }
-      }
-    }),
-    prisma.adminActivity.count({
-      where: {
-        createdAt: {
-          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-        }
-      }
-    })
-  ]);
-
-  const byAction = await prisma.adminActivity.groupBy({
-    by: ['action'],
-    _count: { action: true },
-    orderBy: { _count: { action: 'desc' } },
-    take: 10
-  });
-
-  return { total, today, thisWeek, byAction };
 }

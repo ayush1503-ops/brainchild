@@ -3,30 +3,40 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "description": "Brainchild Studio \u2014 secure API and admin/CMS backend",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "prisma:seed": "tsx prisma/seed.ts",
-    "db:push": "prisma db push"
+    "typecheck": "tsc --noEmit",
+    "db:setup": "node scripts/migrate.mjs && tsx scripts/seed.ts",
+    "db:up": "node scripts/dev-db.mjs start",
+    "db:down": "node scripts/dev-db.mjs stop",
+    "db:status": "node scripts/dev-db.mjs status",
+    "seed": "tsx scripts/seed.ts",
+    "security:test": "tsx src/scripts/security-test.ts",
+    "smoke:test": "tsx src/scripts/smoke-test.ts",
+    "backup": "bash scripts/backup.sh",
+    "restore": "bash scripts/restore.sh",
+    "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
-    "express-validator": "^7.2.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.4.0",
+    "pg": "^8.23.0",
     "sanitize-html": "^2.13.0",
     "zod": "^3.23.8"
+  },
+  "optionalDependencies": {
+    "nodemailer": "^6.9.16"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -36,8 +46,11 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.0",
+    "@types/nodemailer": "^6.4.16",
+    "@types/pg": "^8.23.1",
     "@types/sanitize-html": "^2.13.0",
-    "prisma": "^5.22.0",
+    "drizzle-kit": "^0.31.10",
+    "embedded-postgres": "17.10.0-beta.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

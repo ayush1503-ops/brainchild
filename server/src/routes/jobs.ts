@@ -1,114 +1,196 @@
 import { Router, Response } from 'express';
-import prisma from '../utils/prisma.js';
-import { asyncHandler, AppError } from '../middleware/errorHandler.js';
-import { authMiddleware, AuthRequest, requirePermission } from '../middleware/auth.js';
-import { jobSchema, paginationSchema } from '../validators/index.js';
-import { logActivity, createActivityLogger } from '../services/activity.js';
+import { asc, count, desc, eq, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { db } from '../db/index.js';
+import { jobs } from '../db/schema.js';
+import { AppError, asyncHandler } from '../middleware/errors.js';
+import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { idSchema, paginated, paginationSchema } from '../middleware/validate.js';
+import { audit } from '../services/activity.js';
+import { JOB_TYPE_VALUES, serialiseAdminJob } from '../services/cms.js';
+import { cleanText } from '../utils/sanitize.js';
 
 const router = Router();
+router.use(authenticate);
 
-router.get('/', asyncHandler(async (req, res) => {
-  const query = paginationSchema.parse(req.query);
-  const { page, limit, sortBy, sortOrder, search } = query;
+const SORT_COLUMNS = {
+  createdAt: jobs.createdAt,
+  updatedAt: jobs.updatedAt,
+  title: jobs.title,
+  sortOrder: jobs.sortOrder,
+  department: jobs.department,
+} as const;
 
-  const where: any = { status: 'OPEN' };
-  if (search) {
-    where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { department: { contains: search, mode: 'insensitive' } },
-      { location: { contains: search, mode: 'insensitive' } }
-    ];
-  }
+const jobPayload = z
+  .object({
+    title: z.string().trim().min(3).max(160),
+    department: z.string().trim().min(1).max(80),
+    location: z.string().trim().min(1).max(120),
+    type: z.enum(JOB_TYPE_VALUES as [string, ...string[]]),
+    experience: z.string().trim().min(1).max(80).default('Mid'),
+    description: z.string().trim().min(1).max(4000),
+    responsibilities: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    requirements: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    niceToHave: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    perks: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+    status: z.enum(['OPEN', 'CLOSED']).default('OPEN'),
+    postedDate: z.string().trim().max(40).default(''),
+    sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+  })
+  .strict();
 
-  const [jobs, total] = await Promise.all([
-    prisma.job.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { [sortBy || 'createdAt']: sortOrder }
-    }),
-    prisma.job.count({ where })
-  ]);
+/** GET /api/admin/jobs */
+router.get(
+  '/',
+  requirePermission('jobs:read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const query = paginationSchema
+      .extend({ status: z.enum(['OPEN', 'CLOSED', 'ALL']).default('ALL') })
+      .parse(req.query);
 
-  res.json({
-    jobs,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
-  });
-}));
+    const where = query.search
+      ? or(
+          sql`${jobs.title} ilike ${`%${query.search}%`}`,
+          sql`${jobs.department} ilike ${`%${query.search}%`}`,
+          sql`${jobs.location} ilike ${`%${query.search}%`}`
+        )
+      : query.status === 'ALL'
+        ? undefined
+        : eq(jobs.status, query.status);
 
-router.get('/admin', authMiddleware, requirePermission('jobs:read'), asyncHandler(async (req, res) => {
-  const query = paginationSchema.parse(req.query);
-  const { page, limit, sortBy, sortOrder, search } = query;
+    const sortColumn = SORT_COLUMNS[(query.sortBy as keyof typeof SORT_COLUMNS) ?? 'sortOrder'] ?? jobs.sortOrder;
+    const orderBy = query.sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
 
-  const where = search ? {
-    OR: [
-      { title: { contains: search, mode: 'insensitive' as const } },
-      { department: { contains: search, mode: 'insensitive' as const } }
-    ]
-  } : {};
+    const [items, totals] = await Promise.all([
+      db
+        .select()
+        .from(jobs)
+        .where(where)
+        .orderBy(orderBy)
+        .limit(query.limit)
+        .offset((query.page - 1) * query.limit),
+      db.select({ value: count() }).from(jobs).where(where),
+    ]);
 
-  const [jobs, total] = await Promise.all([
-    prisma.job.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { [sortBy || 'createdAt']: sortOrder }
-    }),
-    prisma.job.count({ where })
-  ]);
+    res.json(paginated(items.map(serialiseAdminJob), totals[0]?.value ?? 0, query.page, query.limit));
+  })
+);
 
-  res.json({
-    jobs,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
-  });
-}));
+/** GET /api/admin/jobs/:id */
+router.get(
+  '/:id',
+  requirePermission('jobs:read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const id = idSchema.parse(req.params.id);
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+    if (!job) throw new AppError(404, 'That role no longer exists.', 'not_found');
+    res.json({ job: serialiseAdminJob(job) });
+  })
+);
 
-router.get('/:id', asyncHandler(async (req, res) => {
-  const job = await prisma.job.findUnique({ where: { id: req.params.id } });
+/** POST /api/admin/jobs */
+router.post(
+  '/',
+  requirePermission('jobs:create'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const data = jobPayload.parse(req.body);
 
-  if (!job) {
-    throw new AppError(404, 'Job not found');
-  }
+    const [last] = await db.select({ sortOrder: jobs.sortOrder }).from(jobs).orderBy(desc(jobs.sortOrder)).limit(1);
 
-  res.json({ job });
-}));
+    const [created] = await db
+      .insert(jobs)
+      .values({
+        title: cleanText(data.title, 160),
+        department: cleanText(data.department, 80),
+        location: cleanText(data.location, 120),
+        type: data.type,
+        experience: cleanText(data.experience, 80),
+        description: cleanText(data.description, 4000),
+        responsibilities: data.responsibilities.map((item) => cleanText(item, 300)),
+        requirements: data.requirements.map((item) => cleanText(item, 300)),
+        niceToHave: data.niceToHave.map((item) => cleanText(item, 300)),
+        perks: data.perks.map((item) => cleanText(item, 200)),
+        status: data.status,
+        postedDate: cleanText(data.postedDate, 40),
+        sortOrder: data.sortOrder ?? (last?.sortOrder ?? 0) + 1,
+      })
+      .returning();
 
-router.post('/', authMiddleware, requirePermission('jobs:create'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const data = jobSchema.parse(req.body);
+    audit(req)('JOB_CREATED', 'job', {
+      entityId: created.id,
+      summary: `Created role “${created.title}”`,
+    });
 
-  const job = await prisma.job.create({ data: data as any });
+    res.status(201).json({ job: serialiseAdminJob(created) });
+  })
+);
 
-  const logger = createActivityLogger(req);
-  logger('CREATE_JOB', 'job', job.id, { title: job.title });
+/** PATCH /api/admin/jobs/:id */
+router.patch(
+  '/:id',
+  requirePermission('jobs:update'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const id = idSchema.parse(req.params.id);
+    const data = jobPayload.partial().parse(req.body);
 
-  res.status(201).json({ job });
-}));
+    const [existing] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1);
+    if (!existing) throw new AppError(404, 'That role no longer exists.', 'not_found');
 
-router.patch('/:id', authMiddleware, requirePermission('jobs:update'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const data = jobSchema.partial().parse(req.body);
+    await db
+      .update(jobs)
+      .set({
+        ...(data.title !== undefined ? { title: cleanText(data.title, 160) } : {}),
+        ...(data.department !== undefined ? { department: cleanText(data.department, 80) } : {}),
+        ...(data.location !== undefined ? { location: cleanText(data.location, 120) } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
+        ...(data.experience !== undefined ? { experience: cleanText(data.experience, 80) } : {}),
+        ...(data.description !== undefined ? { description: cleanText(data.description, 4000) } : {}),
+        ...(data.responsibilities !== undefined
+          ? { responsibilities: data.responsibilities.map((item) => cleanText(item, 300)) }
+          : {}),
+        ...(data.requirements !== undefined
+          ? { requirements: data.requirements.map((item) => cleanText(item, 300)) }
+          : {}),
+        ...(data.niceToHave !== undefined ? { niceToHave: data.niceToHave.map((item) => cleanText(item, 300)) } : {}),
+        ...(data.perks !== undefined ? { perks: data.perks.map((item) => cleanText(item, 200)) } : {}),
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.postedDate !== undefined ? { postedDate: cleanText(data.postedDate, 40) } : {}),
+        ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+      })
+      .where(eq(jobs.id, id));
 
-  const job = await prisma.job.update({
-    where: { id },
-    data
-  });
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
 
-  const logger = createActivityLogger(req);
-  logger('UPDATE_JOB', 'job', job.id, data);
+    audit(req)('JOB_UPDATED', 'job', {
+      entityId: id,
+      summary: `Updated role “${job!.title}”`,
+      metadata: { fields: Object.keys(data) },
+    });
 
-  res.json({ job });
-}));
+    res.json({ job: serialiseAdminJob(job!) });
+  })
+);
 
-router.delete('/:id', authMiddleware, requirePermission('jobs:delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
+/** DELETE /api/admin/jobs/:id — requires typing the job title to confirm. */
+router.delete(
+  '/:id',
+  requirePermission('jobs:delete'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const id = idSchema.parse(req.params.id);
+    const { confirm } = z.object({ confirm: z.string().min(1).max(160) }).strict().parse(req.body);
 
-  await prisma.job.delete({ where: { id } });
+    const [job] = await db.select({ id: jobs.id, title: jobs.title }).from(jobs).where(eq(jobs.id, id)).limit(1);
+    if (!job) throw new AppError(404, 'That role no longer exists.', 'not_found');
+    if (confirm.trim().toLowerCase() !== job.title.toLowerCase()) {
+      throw new AppError(400, `To confirm, type the role title exactly: ${job.title}`, 'confirmation_required');
+    }
 
-  const logger = createActivityLogger(req);
-  logger('DELETE_JOB', 'job', id);
+    await db.delete(jobs).where(eq(jobs.id, id));
 
-  res.json({ success: true });
-}));
+    audit(req)('JOB_DELETED', 'job', { entityId: id, summary: `Deleted role “${job.title}”` });
+    res.json({ ok: true });
+  })
+);
 
 export default router;
