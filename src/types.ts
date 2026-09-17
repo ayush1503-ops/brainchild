@@ -1,4 +1,4 @@
-export type PageRoute = 'home' | 'games' | 'news' | 'blog' | 'about' | 'careers' | 'contact';
+export type PageRoute = 'home' | 'games' | 'news' | 'blog' | 'about' | 'careers' | 'contact' | 'admin';
 
 export type GameCategory =
   | 'Action'

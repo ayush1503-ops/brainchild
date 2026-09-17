@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Game, Article, Job, ContactMessage, NewsletterSubscriber, PageRoute } from '../types';
 import { INITIAL_GAMES, INITIAL_NEWS, INITIAL_JOBS } from '../data/initialData';
 import { toggleAmbientSound, playUiClick } from '../utils/sound';
+import { gamesApi, newsApi, subscribersApi, contactsApi } from '../admin/utils/api';
 
 interface StudioContextType {
   currentRoute: PageRoute;
@@ -157,6 +158,27 @@ export const StudioProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return [];
     }
   });
+
+  // Synchronize public site data from backend API
+  useEffect(() => {
+    let isMounted = true;
+    const syncData = async () => {
+      try {
+        const [gamesRes, newsRes] = await Promise.all([
+          gamesApi.getPublic(),
+          newsApi.getPublic()
+        ]);
+        if (isMounted) {
+          if (gamesRes.data?.games?.length) setGames(gamesRes.data.games);
+          if (newsRes.data?.posts?.length) setNews(newsRes.data.posts);
+        }
+      } catch {
+        // Fall back to local state / initial data
+      }
+    };
+    syncData();
+    return () => { isMounted = false; };
+  }, []);
 
   // Save to localStorage
   useEffect(() => {
