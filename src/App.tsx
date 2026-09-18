@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { StudioProvider, useStudio } from './context/StudioContext';
+import { SupabaseAuthProvider } from './context/SupabaseAuthContext';
 import { AuthProvider } from './admin/context/AuthContext';
 import { ProtectedRoute } from './admin/components/ProtectedRoute';
 import { AdminLayout } from './admin/components/AdminLayout';
@@ -86,65 +87,67 @@ const PublicApp: React.FC = () => {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Admin Authentication Routes */}
-        <Route
-          path="/admin/login"
-          element={
-            <AuthProvider>
-              <LoginPage />
-            </AuthProvider>
-          }
-        />
-        <Route
-          path="/admin/forgot-password"
-          element={
-            <AuthProvider>
-              <ForgotPasswordPage />
-            </AuthProvider>
-          }
-        />
-        <Route
-          path="/admin/reset-password"
-          element={
-            <AuthProvider>
-              <ResetPasswordPage />
-            </AuthProvider>
-          }
-        />
+      <SupabaseAuthProvider>
+        <Routes>
+          {/* Admin Authentication Routes */}
+          <Route
+            path="/admin/login"
+            element={
+              <AuthProvider>
+                <LoginPage />
+              </AuthProvider>
+            }
+          />
+          <Route
+            path="/admin/forgot-password"
+            element={
+              <AuthProvider>
+                <ForgotPasswordPage />
+              </AuthProvider>
+            }
+          />
+          <Route
+            path="/admin/reset-password"
+            element={
+              <AuthProvider>
+                <ResetPasswordPage />
+              </AuthProvider>
+            }
+          />
 
-        {/* Protected Admin Console Routes */}
-        <Route
-          path="/admin"
-          element={
-            <AuthProvider>
-              <ProtectedRoute>
-                <AdminLayout />
-              </ProtectedRoute>
-            </AuthProvider>
-          }
-        >
-          <Route index element={<DashboardPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="games" element={<AdminGamesPage />} />
-          <Route path="news" element={<NewsAdminPage />} />
-          <Route path="subscribers" element={<SubscribersPage />} />
-          <Route path="categories" element={<CategoriesPage />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
-        </Route>
+          {/* Protected Admin Console Routes */}
+          <Route
+            path="/admin"
+            element={
+              <AuthProvider>
+                <ProtectedRoute>
+                  <AdminLayout />
+                </ProtectedRoute>
+              </AuthProvider>
+            }
+          >
+            <Route index element={<DashboardPage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="games" element={<AdminGamesPage />} />
+            <Route path="news" element={<NewsAdminPage />} />
+            <Route path="subscribers" element={<SubscribersPage />} />
+            <Route path="categories" element={<CategoriesPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Route>
 
-        {/* Public Studio Website (Preserves original design 100%) */}
-        <Route
-          path="/*"
-          element={
-            <StudioProvider>
-              <PublicApp />
-            </StudioProvider>
-          }
-        />
-      </Routes>
+          {/* Public Studio Website (Preserves original design 100%) */}
+          <Route
+            path="/*"
+            element={
+              <StudioProvider>
+                <PublicApp />
+              </StudioProvider>
+            }
+          />
+        </Routes>
+      </SupabaseAuthProvider>
     </BrowserRouter>
   );
 }
