@@ -2,34 +2,63 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
-import { authApi } from '../utils/api';
-import { notify } from '../utils/toast';
+import { supabase } from '../../lib/supabase';
 
+/**
+ * Forgot Password page — wired to Supabase Auth.
+ *
+ * When the user submits their email, Supabase sends a password-reset email
+ * with a signed link that points back to /admin/reset-password (configured in
+ * the Supabase dashboard under Authentication → URL Configuration, or via
+ * supabase/0003_auth_email_setup.sql). The ResetPasswordPage detects the
+ * recovery tokens in the URL and prompts for a new password.
+ */
 export const ForgotPasswordPage: React.FC = () => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('brainchildgamesin@gmail.com');
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [resetToken, setResetToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setError('Please enter a valid email address');
       return;
     }
+
+    if (!supabase) {
+      setError('Authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setSuccessMessage(null);
+
     try {
-      const res = await authApi.forgotPassword(email);
-      setSuccessMessage(res.data.message);
-      if (res.data.resetToken) {
-        setResetToken(res.data.resetToken);
+      // redirectTo must be in the "Additional Redirect URLs" list in Supabase
+      // Auth → URL Configuration.
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: `${window.location.origin}/admin/reset-password`,
+      });
+
+      if (resetError) {
+        // Don't leak whether the email exists — same message either way to
+        // prevent account enumeration. But surface real errors (network, etc.).
+        if (resetError.status === 429) {
+          setError('Too many reset attempts. Please wait a minute and try again.');
+        } else {
+          setError(resetError.message || 'Failed to send reset email');
+        }
+        return;
       }
-      notify('Reset request submitted', 'success');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to request password reset');
+
+      setSuccessMessage(
+        `Check ${trimmed} for a password reset link. It may take a minute and could land in Promotions or Spam.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reset email');
     } finally {
       setIsLoading(false);
     }
@@ -52,7 +81,7 @@ export const ForgotPasswordPage: React.FC = () => {
               Reset Password
             </h1>
             <p className="mt-2 text-sm font-medium text-inksoft">
-              Enter your admin email to receive reset instructions
+              Enter your admin email and we'll send a reset link to your inbox
             </p>
           </div>
 
@@ -69,19 +98,6 @@ export const ForgotPasswordPage: React.FC = () => {
                 <CheckCircle2 size={18} />
                 {successMessage}
               </div>
-
-              {resetToken && (
-                <div className="p-4 rounded-xl border-2 border-grape/30 bg-grape/10 text-left space-y-2">
-                  <p className="text-xs font-bold text-grape uppercase tracking-wider">Dev Direct Reset Link:</p>
-                  <Link
-                    to={`/admin/reset-password?token=${resetToken}`}
-                    className="text-xs font-bold text-ink underline break-all hover:text-grape"
-                  >
-                    /admin/reset-password?token={resetToken}
-                  </Link>
-                </div>
-              )}
-
               <Link
                 to="/admin/login"
                 className="inline-flex items-center justify-center gap-2 w-full rounded-xl border-2 border-ink bg-grape px-6 py-3 text-sm font-extrabold uppercase text-white shadow-sticker"
@@ -102,7 +118,7 @@ export const ForgotPasswordPage: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-3 pl-11 text-sm font-semibold text-ink placeholder-inksoft/60 focus:border-grape focus:outline-none"
-                    placeholder="admin@brainchild.games"
+                    placeholder="you@brainchild.games"
                     required
                   />
                 </div>
@@ -111,9 +127,9 @@ export const ForgotPasswordPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-ink bg-coral px-6 py-3.5 text-sm font-extrabold uppercase tracking-wide text-white shadow-sticker hover:bg-coraldeep cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-ink bg-coral px-6 py-3.5 text-sm font-extrabold uppercase tracking-wide text-white shadow-sticker hover:bg-coraldeep cursor-pointer disabled:opacity-60"
               >
-                {isLoading ? 'Sending...' : 'Send Reset Link'}
+                {isLoading ? 'Sending...' : 'Send Reset Link to Gmail'}
               </button>
 
               <div className="text-center pt-2">
