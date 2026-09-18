@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { redact } from '../utils/logger.js';
@@ -7,6 +8,29 @@ interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+}
+
+type Nodemailer = typeof import('nodemailer');
+
+/**
+ * Loads nodemailer at runtime with a bundler-opaque module name.
+ *
+ * Why: a static `import('nodemailer')` would make the serverless bundler inline
+ * nodemailer + iconv-lite (~700 KB) into the Vercel function. On Vercel, SMTP
+ * delivery is therefore best-effort: if the package isn't resolvable in the
+ * function environment the mailer degrades gracefully (logged, no crash).
+ * Local/VM deployments have node_modules present, so SMTP works out of the box.
+ */
+function loadNodemailer(): Nodemailer | null {
+  try {
+    const require = createRequire(import.meta.url);
+    const moduleName = ['node', 'mailer'].join('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = require(moduleName) as any;
+    return (mod?.default ?? mod) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -36,9 +60,9 @@ export async function sendMail(message: MailMessage): Promise<{ delivered: boole
   }
 
   try {
-    const nodemailer = await import('nodemailer').catch(() => null);
+    const nodemailer = loadNodemailer();
     if (!nodemailer) {
-      logger.error('nodemailer is not installed; run `npm install nodemailer` in server/');
+      logger.error('nodemailer is not available in this runtime; SMTP mail disabled (local dev: `npm install nodemailer` in server/)');
       return { delivered: false, reason: 'nodemailer_missing' };
     }
 

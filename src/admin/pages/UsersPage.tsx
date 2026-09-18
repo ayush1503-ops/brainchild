@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Shield, Plus, Lock, CheckCircle2, XCircle, Trash2, Edit3, AlertOctagon } from 'lucide-react';
-import { usersApi, authApi } from '../utils/api';
+import { teamApi, ApiError } from '../utils/api';
+import type { TeamMember } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { notify } from '../utils/toast';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 
-interface AdminUserItem {
-  id: string;
-  email: string;
-  name?: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'EDITOR';
-  isActive: boolean;
-  lastLoginAt?: string;
-  createdAt: string;
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
 }
+
+type AdminUserItem = TeamMember;
 
 export const UsersPage: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -46,10 +43,10 @@ export const UsersPage: React.FC = () => {
     if (!isSuperAdmin) return;
     setIsLoading(true);
     try {
-      const res = await usersApi.getAll();
-      setUsers(res.data.users || res.data);
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to load admin users', 'error');
+      const res = await teamApi.list();
+      setUsers(res);
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to load admin users'), 'error');
     } finally {
       setIsLoading(false);
     }
@@ -59,22 +56,32 @@ export const UsersPage: React.FC = () => {
     loadUsers();
   }, [isSuperAdmin]);
 
+  // The API mints a one-time password for newly created admins; surface it once.
+  const [issuedCredential, setIssuedCredential] = useState<{ email: string; password: string } | null>(null);
+
   // Handle Create Admin
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.email || !createForm.password) {
-      notify('Email and password are required', 'error');
+    if (!createForm.email) {
+      notify('Email is required', 'error');
       return;
     }
     setIsSaving(true);
     try {
-      await authApi.register(createForm.email, createForm.password, createForm.name, createForm.role);
+      const result = await teamApi.create({
+        email: createForm.email,
+        name: createForm.name || createForm.email.split('@')[0],
+        role: createForm.role,
+      });
       notify('Admin user created successfully', 'success');
+      if (result.oneTimePassword) {
+        setIssuedCredential({ email: createForm.email, password: result.oneTimePassword });
+      }
       setIsCreateOpen(false);
       setCreateForm({ name: '', email: '', password: '', role: 'EDITOR' });
       loadUsers();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to create user', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to create user'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -86,12 +93,12 @@ export const UsersPage: React.FC = () => {
     if (!editingUser) return;
     setIsSaving(true);
     try {
-      await usersApi.update(editingUser.id, editForm);
+      await teamApi.update(editingUser.id, editForm);
       notify('User updated successfully', 'success');
       setEditingUser(null);
       loadUsers();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to update user', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to update user'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -101,12 +108,12 @@ export const UsersPage: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await usersApi.delete(deleteTarget.id);
+      await teamApi.remove(deleteTarget.id, deleteTarget.email);
       notify('User deleted', 'success');
       setDeleteTarget(null);
       loadUsers();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to delete user', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to delete user'), 'error');
     }
   };
 
@@ -144,6 +151,27 @@ export const UsersPage: React.FC = () => {
           <Plus size={16} /> Create New Admin
         </button>
       </div>
+
+      {/* One-time password for a freshly created admin */}
+      {issuedCredential && (
+        <div className="flex flex-col gap-3 rounded-2xl border-2 border-moss bg-moss/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs font-semibold text-ink">
+            <p className="font-extrabold uppercase tracking-wider text-moss">One-time password issued for {issuedCredential.email}</p>
+            <p className="mt-1 text-inksoft">Share it securely — the admin must change it after first sign-in.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="rounded-lg border-2 border-moss/30 bg-paper px-3 py-2 font-mono text-sm font-bold text-ink">
+              {issuedCredential.password}
+            </code>
+            <button
+              onClick={() => setIssuedCredential(null)}
+              className="rounded-lg border-2 border-ink/15 bg-cream px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider text-ink hover:bg-sand"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Users Table */}
       <div className="rounded-2xl border-2 border-ink bg-cream overflow-hidden shadow-sticker-sm">
@@ -196,7 +224,7 @@ export const UsersPage: React.FC = () => {
                     {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}
                   </td>
                   <td className="p-4 text-inksoft">
-                    {new Date(user.createdAt).toLocaleDateString()}
+                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -262,15 +290,10 @@ export const UsersPage: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-inksoft">Password *</label>
-                <input
-                  type="password"
-                  value={createForm.password}
-                  onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border-2 border-ink/15 bg-paper px-3 py-2 text-xs font-semibold text-ink"
-                  required
-                />
+                <label className="text-[11px] font-bold uppercase text-inksoft">Starting Password</label>
+                <div className="rounded-xl border-2 border-dashed border-ink/20 bg-sand/40 px-3 py-2 text-[11px] font-medium text-inksoft">
+                  The studio generates a one-time password and shares it with you right after creation — the new admin is asked to change it on first sign-in.
+                </div>
               </div>
 
               <div className="space-y-1">

@@ -11,6 +11,22 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // Split stable third-party libraries into their own long-cacheable
+          // chunks so app updates don't force visitors to re-download React,
+          // motion, etc. (Vercel serves /assets with immutable caching for
+          // content-hashed filenames.)
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-motion': ['motion'],
+            'vendor-data': ['@tanstack/react-query', 'axios'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+          },
+        },
+      },
+    },
     server: {
       // Allow the Arena preview proxy host to reach the dev server.
       allowedHosts: true as const,

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .next/
+server/dist/
+.vercel/
 
 # Environment files: never commit real secrets
 .env

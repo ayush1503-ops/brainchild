@@ -82,7 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refresh]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { user: signedIn } = await authApi.login(email, password);
+    const { admin: signedIn } = await authApi.login(email, password);
     setUser(signedIn);
   }, []);
 

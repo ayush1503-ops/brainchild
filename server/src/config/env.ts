@@ -84,7 +84,29 @@ export const config = {
 
   // --- uploads ------------------------------------------------------------
   uploadDir: optional(process.env.UPLOAD_DIR, './uploads'),
-  maxUploadBytes: Number(optional(process.env.MAX_UPLOAD_BYTES, String(5 * 1024 * 1024))),
+  // 4 MB keeps single-image uploads under the 4.5 MB serverless request-body
+  // limit on Vercel (and is plenty for CMS hero/cover images).
+  maxUploadBytes: Number(optional(process.env.MAX_UPLOAD_BYTES, String(4 * 1024 * 1024))),
+
+  /**
+   * Media storage backend:
+   *  - `local`    (default when no Supabase service-role key is present):
+   *               files live on the API server's disk and are served from
+   *               `/uploads`. Fine for development and single-server deploys.
+   *  - `supabase`: files go to a Supabase Storage bucket via the service-role
+   *               key and are served from the public storage CDN. This is the
+   *               correct mode for serverless hosts (Vercel) where the local
+   *               filesystem is ephemeral.
+   *
+   * Set STORAGE_DRIVER explicitly to override auto-detection.
+   */
+  storageDriver: optional(
+    process.env.STORAGE_DRIVER,
+    process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_URL ? 'supabase' : 'local'
+  ),
+  supabaseUrl: process.env.SUPABASE_URL?.trim() || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || '',
+  storageBucket: optional(process.env.STORAGE_BUCKET, 'media'),
 
   // --- mail ---------------------------------------------------------------
   mail: {
@@ -113,6 +135,18 @@ export const config = {
 };
 
 export type AppConfig = typeof config;
+
+/* Validate the storage driver up front so misconfiguration fails loudly. */
+if (!['local', 'supabase'].includes(config.storageDriver)) {
+  throw new Error(
+    `[config] STORAGE_DRIVER must be "local" or "supabase", got "${config.storageDriver}".`
+  );
+}
+if (isProduction && config.storageDriver === 'supabase' && (!config.supabaseUrl || !config.supabaseServiceRoleKey)) {
+  throw new Error(
+    '[config] STORAGE_DRIVER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in production.'
+  );
+}
 
 /** Startup checklist printed once so operators can spot insecure setups fast. */
 export function configReport(): string[] {

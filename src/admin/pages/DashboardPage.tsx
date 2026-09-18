@@ -13,49 +13,73 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { adminApi, gamesApi, newsApi, subscribersApi } from '../utils/api';
-import { AdminUser, Game } from '../types';
+import { dashboardApi } from '../utils/api';
+import type { ActivityEntry, DashboardStats as DashboardStatsResponse } from '../types';
 import { notify } from '../utils/toast';
 
 const STAT_CARDS = [
-  { key: 'totalGames', label: 'Total Games', icon: Gamepad2, color: 'bg-grape', trend: '+2 this month' },
-  { key: 'publishedGames', label: 'Published', icon: Gamepad2, color: 'bg-lime', trend: '+1 this week' },
-  { key: 'draftGames', label: 'Drafts', icon: Gamepad2, color: 'bg-sun', trend: '3 in progress' },
-  { key: 'totalNews', label: 'News Posts', icon: Newspaper, color: 'bg-coral', trend: '+3 this month' },
-  { key: 'totalUsers', label: 'Admin Users', icon: Users, color: 'bg-sky', trend: '2 new' },
-  { key: 'subscribers', label: 'Subscribers', icon: Mail, color: 'bg-grape', trend: '+47 this week' }
+  { key: 'totalGames', label: 'Total Games', icon: Gamepad2, color: 'bg-grape', trend: 'in the catalogue' },
+  { key: 'publishedGames', label: 'Published', icon: Gamepad2, color: 'bg-lime', trend: 'live on the site' },
+  { key: 'draftGames', label: 'Drafts', icon: Gamepad2, color: 'bg-sun', trend: 'in progress' },
+  { key: 'totalNews', label: 'News Posts', icon: Newspaper, color: 'bg-coral', trend: 'in the newsroom' },
+  { key: 'players', label: 'Players', icon: Users, color: 'bg-sky', trend: 'registered accounts' },
+  { key: 'subscribers', label: 'Subscribers', icon: Mail, color: 'bg-grape', trend: 'on the newsletter' }
 ] as const;
 
 interface DashboardStats {
   totalGames: number;
   publishedGames: number;
   draftGames: number;
-  totalUsers: number;
-  subscribers: number;
   totalNews: number;
+  players: number;
+  subscribers: number;
+}
+
+interface RecentGame {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+  published: boolean;
+  updatedAt: string;
+  heroImage?: string | null;
+}
+
+interface RecentPost {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+  updatedAt: string;
+  publishedAt?: string | null;
+  coverImage: string;
+  category?: { name?: string } | null;
 }
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [recentGames, setRecentGames] = useState<Game[]>([]);
-  const [recentNews, setRecentNews] = useState<any[]>([]);
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
+  const [recentNews, setRecentNews] = useState<RecentPost[]>([]);
+  const [recentActivity, setRecentActivity] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [statsRes, gamesRes, newsRes, activityRes] = await Promise.all([
-          adminApi.getStats(),
-          gamesApi.getAll({ limit: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
-          newsApi.getAll({ limit: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
-          adminApi.getStats().then(() => Promise.resolve({ data: { recentActivity: [] } })) // Placeholder
-        ]);
-
-        setStats(statsRes.data.stats);
-        setRecentGames(gamesRes.data.games);
-        setRecentNews(newsRes.data.posts);
-        // Activity would come from activityApi.getRecent()
+        // One round-trip: the dashboard endpoint bundles stats + recent lists.
+        const data: DashboardStatsResponse = await dashboardApi.overview();
+        const s = data.stats;
+        setStats({
+          totalGames: s.games.total,
+          publishedGames: s.games.published,
+          draftGames: Math.max(s.games.total - s.games.published, 0),
+          totalNews: s.posts.total,
+          players: s.players.total,
+          subscribers: s.subscribers.total,
+        });
+        setRecentGames(data.recentGames);
+        setRecentNews(data.recentPosts);
+        setRecentActivity(data.recentActivity);
       } catch (error) {
         console.error('Failed to load dashboard:', error);
         notify('Failed to load dashboard data', 'error');
@@ -178,11 +202,6 @@ export const DashboardPage: React.FC = () => {
                       <span className={`rounded-full border-2 border-ink px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider ${getStatusBadge(game.status)}`}>
                         {game.status.replace('_', ' ')}
                       </span>
-                      {game.featured && (
-                        <span className="rounded-full border-2 border-ink bg-grape/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-grape">
-                          Featured
-                        </span>
-                      )}
                       {game.published ? (
                         <span className="rounded-full border-2 border-ink bg-lime/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-lime">
                           Published
@@ -194,7 +213,7 @@ export const DashboardPage: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-inksoft">{formatDate(game.createdAt)}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-inksoft">{formatDate(game.updatedAt)}</span>
                 </Link>
               ))
             )}
@@ -233,9 +252,11 @@ export const DashboardPage: React.FC = () => {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-ink truncate">{post.title}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`rounded-full border-2 border-ink px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider ${post.category.color}`}>
-                        {post.category.name}
-                      </span>
+                      {post.category?.name && (
+                        <span className="rounded-full border-2 border-ink bg-grape/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-grape">
+                          {post.category.name}
+                        </span>
+                      )}
                       {post.status === 'PUBLISHED' ? (
                         <span className="rounded-full border-2 border-ink bg-lime/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-lime">
                           Published
@@ -247,7 +268,7 @@ export const DashboardPage: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-inksoft">{formatDate(post.createdAt)}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-inksoft">{formatDate(post.updatedAt)}</span>
                 </Link>
               ))
             )}
@@ -282,11 +303,9 @@ export const DashboardPage: React.FC = () => {
                   <MoreHorizontal size={16} className="text-grape" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">
-                    <span className="text-grape">{activity.adminUser.name || activity.adminUser.email}</span>{' '}
-                    {activity.action.toLowerCase().replace('_', ' ')} {' '}
-                    <span className="font-mono text-inksoft">{activity.entityType}</span>
-                    {activity.entityId && <span className="text-ink/50">#{activity.entityId.slice(-6)}</span>}
+                  <p className="font-semibold text-ink truncate">
+                    <span className="text-grape">{activity.actorEmail || activity.admin?.name || activity.admin?.email || 'Admin'}</span>{' '}
+                    {activity.summary || activity.action.toLowerCase().replace('_', ' ')}
                   </p>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-inksoft">{formatDate(activity.createdAt)}</p>
                 </div>

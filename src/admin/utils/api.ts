@@ -151,11 +151,12 @@ export const isApiError = (error: unknown): error is ApiError => error instanceo
 
 export const authApi = {
   async me() {
-    const { data } = await client.get<{ user: AdminUser; csrfToken?: string }>('/auth/me');
-    return data.user;
+    // The API's auth responses are keyed `admin` (not `user`).
+    const { data } = await client.get<{ admin: AdminUser; csrfToken?: string }>('/auth/me');
+    return data.admin;
   },
   async login(email: string, password: string) {
-    const { data } = await client.post<{ user: AdminUser; csrfToken: string }>('/auth/login', { email, password });
+    const { data } = await client.post<{ admin: AdminUser; csrfToken: string }>('/auth/login', { email, password });
     return data;
   },
   async logout() {
@@ -450,8 +451,9 @@ export const teamApi = {
 
 export const contentApi = {
   async blocks() {
-    const { data } = await client.get<{ blocks: ContentBlock[]; settings: ContentBlock[] }>('/admin/content');
-    return data;
+    // The API keys editable content blocks `content` (and `settings`).
+    const { data } = await client.get<{ content: ContentBlock[]; settings: ContentBlock[] }>('/admin/content');
+    return { blocks: data.content, settings: data.settings };
   },
   async updateBlock(key: string, value: unknown) {
     const { data } = await client.put<{ block: ContentBlock }>(`/admin/content/${encodeURIComponent(key)}`, { value });

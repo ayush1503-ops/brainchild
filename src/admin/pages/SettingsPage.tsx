@@ -1,64 +1,113 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Download, Lock, CheckCircle2, AlertOctagon, RefreshCw, Activity, Server, FileText } from 'lucide-react';
-import { settingsApi } from '../utils/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Settings, Shield, Download, AlertOctagon, Activity, Server, FileText, Loader2 } from 'lucide-react';
+import { contentApi, backupApi, activityApi, downloadJson, ApiError } from '../utils/api';
+import type { ActivityEntry, SystemSnapshot } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { notify } from '../utils/toast';
 
-interface AuditLog {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId?: string;
-  createdAt: string;
-  adminUser?: { name?: string; email: string; role: string };
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
+interface SettingsForm {
+  siteName: string;
+  tagline: string;
+  contactEmail: string;
+  registrationOpen: boolean;
 }
 
 export const SettingsPage: React.FC = () => {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
 
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<SettingsForm>({
     siteName: 'Brainchild Games',
+    tagline: 'Play. Discover. Repeat.',
     contactEmail: 'hello@brainchild.games',
-    maintenanceMode: false,
-    enableRegistrations: false,
-    requireMfa: false
+    registrationOpen: false,
   });
 
-  const [overview, setOverview] = useState<any>(null);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [snapshot, setSnapshot] = useState<SystemSnapshot | null>(null);
+  const [logs, setLogs] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const loadSettings = async () => {
+  // Full stored values for each block we edit — saves merge the form fields
+  // into these so untouched fields (e.g. contact FAQ, logoUrl) are preserved.
+  const [brandValue, setBrandValue] = useState<Record<string, unknown>>({});
+  const [contactValue, setContactValue] = useState<Record<string, unknown>>({});
+  const [registrationValue, setRegistrationValue] = useState<Record<string, unknown>>({});
+
+  const loadSettings = useCallback(async () => {
     if (!isSuperAdmin) return;
     setIsLoading(true);
     try {
-      const res = await settingsApi.get();
-      setSettings(res.data.settings);
-      setOverview(res.data.systemOverview);
-      setLogs(res.data.recentLogs || []);
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to load settings', 'error');
+      const [blocks, system, activity] = await Promise.all([
+        contentApi.blocks(),
+        backupApi.system(),
+        activityApi.list({ limit: 10 }),
+      ]);
+
+      const setting = (key: string): Record<string, unknown> | null => {
+        const value = blocks.settings.find((entry) => entry.key === key)?.value;
+        return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+      };
+      const block = (key: string): Record<string, unknown> | null => {
+        const value = blocks.blocks.find((entry) => entry.key === key)?.value;
+        return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+      };
+
+      const brand = setting('site.brand') ?? {};
+      const contact = block('contact.details') ?? {};
+      const registration = setting('players.registration') ?? {};
+
+      setBrandValue(brand);
+      setContactValue(contact);
+      setRegistrationValue(registration);
+      setSettings({
+        siteName: (brand.name as string) ?? 'Brainchild Games',
+        tagline: (brand.tagline as string) ?? 'Play. Discover. Repeat.',
+        contactEmail: (contact.email as string) ?? 'hello@brainchild.games',
+        registrationOpen: (registration.registrationOpen as boolean) ?? false,
+      });
+      setSnapshot(system);
+      setLogs(activity.items);
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to load settings'), 'error');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     loadSettings();
-  }, [isSuperAdmin]);
+  }, [loadSettings]);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      await settingsApi.update(settings);
+      await Promise.all([
+        contentApi.updateSetting('site.brand', {
+          ...brandValue,
+          name: settings.siteName,
+          shortName: settings.siteName.split(' ')[0] || 'Brainchild',
+          tagline: settings.tagline,
+        }),
+        contentApi.updateBlock('contact.details', {
+          ...contactValue,
+          email: settings.contactEmail,
+        }),
+        contentApi.updateSetting('players.registration', {
+          ...registrationValue,
+          registrationOpen: settings.registrationOpen,
+        }),
+      ]);
       notify('Studio settings updated successfully', 'success');
       loadSettings();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to update settings', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to update settings'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -67,16 +116,11 @@ export const SettingsPage: React.FC = () => {
   const handleDownloadBackup = async () => {
     setIsExporting(true);
     try {
-      const response = await settingsApi.exportBackup();
-      const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `brainchild_database_backup_${Date.now()}.json`;
-      link.click();
+      const bundle = await backupApi.exportBundle();
+      downloadJson(bundle, `brainchild_database_backup_${Date.now()}.json`);
       notify('Database backup downloaded', 'success');
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to download backup', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to download backup'), 'error');
     } finally {
       setIsExporting(false);
     }
@@ -92,6 +136,14 @@ export const SettingsPage: React.FC = () => {
         <p className="text-sm font-semibold text-inksoft leading-relaxed">
           System Security Settings and Data Backup tools are restricted to <strong className="text-coral">Super Admin</strong> accounts only. Your current role is <strong className="text-grape uppercase">{currentUser?.role}</strong>.
         </p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="animate-spin h-8 w-8 text-grape" />
       </div>
     );
   }
@@ -127,39 +179,36 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-inksoft">Contact Email</label>
+                <label className="text-[11px] font-bold uppercase text-inksoft">Tagline</label>
                 <input
-                  type="email"
-                  value={settings.contactEmail}
-                  onChange={e => setSettings({ ...settings, contactEmail: e.target.value })}
+                  type="text"
+                  value={settings.tagline}
+                  onChange={e => setSettings({ ...settings, tagline: e.target.value })}
                   className="w-full rounded-xl border-2 border-ink/15 bg-paper px-3 py-2 text-xs font-semibold text-ink"
                 />
               </div>
             </div>
 
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-inksoft">Contact Email</label>
+              <input
+                type="email"
+                value={settings.contactEmail}
+                onChange={e => setSettings({ ...settings, contactEmail: e.target.value })}
+                className="w-full rounded-xl border-2 border-ink/15 bg-paper px-3 py-2 text-xs font-semibold text-ink"
+              />
+            </div>
+
             <div className="space-y-3 pt-2 border-t-2 border-ink/10">
               <div className="flex items-center justify-between p-3 rounded-xl border border-ink/10 bg-paper">
                 <div>
-                  <p className="text-xs font-bold text-ink">Maintenance Mode</p>
-                  <p className="text-[10px] text-inksoft">Temporarily display maintenance banner on public website</p>
+                  <p className="text-xs font-bold text-ink">Player Self Registration</p>
+                  <p className="text-[10px] text-inksoft">Allow visitors to create player accounts from the website</p>
                 </div>
                 <input
                   type="checkbox"
-                  checked={settings.maintenanceMode}
-                  onChange={e => setSettings({ ...settings, maintenanceMode: e.target.checked })}
-                  className="h-5 w-5 rounded border-2 border-ink"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl border border-ink/10 bg-paper">
-                <div>
-                  <p className="text-xs font-bold text-ink">Self Registration</p>
-                  <p className="text-[10px] text-inksoft">Allow public admin registration (Disabled by default for security)</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.enableRegistrations}
-                  onChange={e => setSettings({ ...settings, enableRegistrations: e.target.checked })}
+                  checked={settings.registrationOpen}
+                  onChange={e => setSettings({ ...settings, registrationOpen: e.target.checked })}
                   className="h-5 w-5 rounded border-2 border-ink"
                 />
               </div>
@@ -169,7 +218,7 @@ export const SettingsPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSaving}
-                className="rounded-xl border-2 border-ink bg-coral px-6 py-2.5 text-xs font-extrabold uppercase text-white shadow-sticker hover:bg-coraldeep cursor-pointer"
+                className="rounded-xl border-2 border-ink bg-coral px-6 py-2.5 text-xs font-extrabold uppercase text-white shadow-sticker hover:bg-coraldeep cursor-pointer disabled:opacity-50"
               >
                 {isSaving ? 'Saving...' : 'Save Settings'}
               </button>
@@ -188,7 +237,7 @@ export const SettingsPage: React.FC = () => {
             <button
               onClick={handleDownloadBackup}
               disabled={isExporting}
-              className="flex items-center gap-2 rounded-xl border-2 border-ink bg-grape px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-sticker hover:bg-grapedeep cursor-pointer"
+              className="flex items-center gap-2 rounded-xl border-2 border-ink bg-grape px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-sticker hover:bg-grapedeep cursor-pointer disabled:opacity-50"
             >
               <Download size={16} />
               {isExporting ? 'Preparing Backup...' : 'Download Full Database Backup (JSON)'}
@@ -206,7 +255,7 @@ export const SettingsPage: React.FC = () => {
             <div className="space-y-2 text-xs font-semibold">
               <div className="flex justify-between py-1 border-b border-ink/10">
                 <span className="text-inksoft">Database Protocol:</span>
-                <span className="font-bold text-ink">Prisma Relational ORM</span>
+                <span className="font-bold text-ink">PostgreSQL (Drizzle ORM)</span>
               </div>
               <div className="flex justify-between py-1 border-b border-ink/10">
                 <span className="text-inksoft">Session Auth:</span>
@@ -244,7 +293,7 @@ export const SettingsPage: React.FC = () => {
                       <span className="text-[9px] text-inksoft">{new Date(log.createdAt).toLocaleTimeString()}</span>
                     </div>
                     <p className="text-[11px] font-medium text-ink">
-                      {log.adminUser?.name || log.adminUser?.email || 'Admin'} · <span className="text-inksoft">{log.entityType}</span>
+                      {log.actorEmail || log.admin?.name || log.admin?.email || 'Admin'} · <span className="text-inksoft">{log.entityType ?? 'system'}</span>
                     </p>
                   </div>
                 ))
