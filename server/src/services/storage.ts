@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { eq } from 'drizzle-orm';
+import { StorageClient } from '@supabase/storage-js';
 import { db } from '../db/index.js';
 import { mediaAssets } from '../db/schema.js';
 import { config } from '../config/env.js';
@@ -11,14 +12,50 @@ import { logger } from '../utils/logger.js';
 export const UPLOAD_ROOT = path.resolve(process.cwd(), config.uploadDir);
 
 /**
- * Local disk is intentional for development and single-server deploys.
- * In production point `config.uploadDir` at a mounted volume, or swap
- * `storeImage` for an object-store adapter (S3/R2/Supabase Storage) — the
- * rest of the app only ever sees the returned URL.
+ * Media storage backends:
+ *  - `local`    – development / single-server deploys. Files live under
+ *                 UPLOAD_ROOT and are served read-only from `/uploads`.
+ *  - `supabase` – serverless deploys (Vercel). Files are uploaded to a public
+ *                 Supabase Storage bucket with the service-role key and served
+ *                 from the storage CDN. The rest of the app only ever sees the
+ *                 returned URL, so both drivers are interchangeable.
  */
 export const STORE_ROOT_NOTE =
-  'Images are stored on the API server under the upload directory and served read-only from /uploads.';
+  config.storageDriver === 'supabase'
+    ? `Images are stored in Supabase Storage (public bucket "${config.storageBucket}") and served from the storage CDN.`
+    : 'Images are stored on the API server under the upload directory and served read-only from /uploads.';
 
+/* ------------------------ Supabase Storage client ------------------------ */
+/**
+ * We use the raw `StorageClient` (not the full Supabase JS client) because the
+ * API only ever touches Storage. This keeps the serverless bundle small and
+ * avoids dragging in auth/realtime/postgrest. The service-role key is sent as
+ * a bearer token, which bypasses RLS — exactly what an admin upload needs.
+ */
+let storageClient: StorageClient | null = null;
+
+function getStorageClient(): StorageClient {
+  if (config.storageDriver !== 'supabase') {
+    throw new AppError(500, 'Media storage is not configured.', 'storage_not_configured');
+  }
+  if (!storageClient) {
+    if (!config.supabaseUrl || !config.supabaseServiceRoleKey) {
+      throw new AppError(500, 'Supabase Storage is not configured.', 'storage_not_configured');
+    }
+    const baseUrl = config.supabaseUrl.replace(/\/$/, '');
+    storageClient = new StorageClient(`${baseUrl}/storage/v1`, {
+      // Service-role key via both accepted auth headers (belt and suspenders).
+      apikey: config.supabaseServiceRoleKey,
+      Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+    });
+  }
+  return storageClient;
+}
+
+function supabasePublicBase(): string | null {
+  if (!config.supabaseUrl) return null;
+  return `${config.supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/${config.storageBucket}`;
+}
 
 const MAX_DIMENSION = 12_000;
 const MAX_PIXELS = 60_000_000;
@@ -117,6 +154,7 @@ export function assertSafeImage(detected: DetectedImage | null, sizeBytes: numbe
 }
 
 export async function ensureUploadRoot(): Promise<void> {
+  if (config.storageDriver !== 'local') return;
   await fs.mkdir(UPLOAD_ROOT, { recursive: true, mode: 0o755 });
 }
 
@@ -141,24 +179,40 @@ export async function storeImage(input: {
   originalName: string;
   uploadedById?: string | null;
 }): Promise<StoredAsset> {
-  await ensureUploadRoot();
-
   const detected = assertSafeImage(detectImage(input.buffer), input.buffer.length);
   const filename = randomFilename(detected.extension);
-  const absolutePath = path.join(UPLOAD_ROOT, filename);
 
-  if (!absolutePath.startsWith(UPLOAD_ROOT + path.sep)) {
-    throw new AppError(400, 'Invalid upload path.', 'invalid_path');
+  let url: string;
+  if (config.storageDriver === 'supabase') {
+    const client = getStorageClient();
+    const { error } = await client
+      .from(config.storageBucket)
+      .upload(filename, input.buffer, {
+        contentType: detected.mimeType,
+        upsert: false,
+        cacheControl: '31536000',
+      });
+    if (error) {
+      logger.error('Supabase Storage upload failed', { error: error.message, filename });
+      throw new AppError(502, 'Could not store the image. Please try again.', 'storage_upload_failed');
+    }
+    url = client.from(config.storageBucket).getPublicUrl(filename).data.publicUrl;
+  } else {
+    await ensureUploadRoot();
+    const absolutePath = path.join(UPLOAD_ROOT, filename);
+    if (!absolutePath.startsWith(UPLOAD_ROOT + path.sep)) {
+      throw new AppError(400, 'Invalid upload path.', 'invalid_path');
+    }
+    await fs.writeFile(absolutePath, input.buffer, { mode: 0o644 });
+    url = `/uploads/${filename}`;
   }
-
-  await fs.writeFile(absolutePath, input.buffer, { mode: 0o644 });
 
   const [asset] = await db
     .insert(mediaAssets)
     .values({
       filename,
       originalName: input.originalName.replace(/[^\w.\- ]/g, '_').slice(0, 180),
-      url: `/uploads/${filename}`,
+      url,
       mimeType: detected.mimeType,
       sizeBytes: input.buffer.length,
       width: detected.width,
@@ -168,7 +222,7 @@ export async function storeImage(input: {
     })
     .returning();
 
-  logger.info('Stored media asset', { id: asset.id, filename, size: asset.sizeBytes });
+  logger.info('Stored media asset', { id: asset.id, filename, size: asset.sizeBytes, driver: config.storageDriver });
 
   return {
     id: asset.id,
@@ -182,6 +236,34 @@ export async function storeImage(input: {
 }
 
 const SAFE_FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/;
+
+export type ManagedUrl =
+  | { kind: 'local'; filename: string }
+  | { kind: 'supabase'; filename: string };
+
+/**
+ * Recognises URLs this application manages:
+ *  - `/uploads/<file>` — local-disk assets
+ *  - `<supabase public base>/<file>` — Supabase Storage assets
+ */
+export function parseManagedUrl(url: string): ManagedUrl | null {
+  if (typeof url !== 'string') return null;
+
+  const localMatch = url.match(/^\/uploads\/([A-Za-z0-9][A-Za-z0-9._-]{0,180})$/);
+  if (localMatch) return { kind: 'local', filename: localMatch[1] };
+
+  const base = supabasePublicBase();
+  if (base) {
+    const prefix = `${base}/`;
+    if (url.startsWith(prefix)) {
+      const filename = url.slice(prefix.length);
+      if (SAFE_FILENAME.test(filename) && !filename.includes('..')) {
+        return { kind: 'supabase', filename };
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Resolves a stored filename to an absolute path, refusing anything that could
@@ -202,13 +284,29 @@ export async function deleteAsset(id: string): Promise<void> {
   const [asset] = await db.select().from(mediaAssets).where(eq(mediaAssets.id, id)).limit(1);
   if (!asset) throw new AppError(404, 'That media item no longer exists.', 'not_found');
 
-  const absolute = resolveStoredFile(asset.filename);
-  await fs.rm(absolute, { force: true });
+  const managed = parseManagedUrl(asset.url);
+  if (managed) {
+    if (managed.kind === 'supabase') {
+      if (config.storageDriver === 'supabase') {
+        const client = getStorageClient();
+        const { error } = await client.from(config.storageBucket).remove([managed.filename]);
+        if (error) logger.warn('Supabase Storage delete failed (DB row still removed)', { id, error: error.message });
+      } else {
+        logger.warn('Deleting a Supabase-hosted asset while local storage is active; skipping object removal', { id });
+      }
+    } else {
+      await fs.rm(resolveStoredFile(managed.filename), { force: true });
+    }
+  } else {
+    // Legacy rows with unknown URLs: best-effort local removal.
+    await fs.rm(resolveStoredFile(asset.filename), { force: true }).catch(() => undefined);
+  }
+
   await db.delete(mediaAssets).where(eq(mediaAssets.id, id));
   logger.info('Deleted media asset', { id, filename: asset.filename });
 }
 
 /** True when the URL points at a file we manage. */
 export function isManagedUrl(url: string): boolean {
-  return typeof url === 'string' && /^\/uploads\/[A-Za-z0-9._-]+$/.test(url);
+  return parseManagedUrl(url) !== null;
 }

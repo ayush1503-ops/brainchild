@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Tag, Plus, Edit3, Trash2, CheckCircle2 } from 'lucide-react';
-import { categoriesApi } from '../utils/api';
+import { categoriesApi, ApiError } from '../utils/api';
+import type { Category as CategoryItem } from '../types';
 import { notify } from '../utils/toast';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 
-interface CategoryItem {
-  id: string;
-  name: string;
-  slug: string;
-  color: string;
-  _count?: { newsPosts: number };
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
 }
 
 export const CategoriesPage: React.FC = () => {
@@ -31,10 +28,10 @@ export const CategoriesPage: React.FC = () => {
   const loadCategories = async () => {
     setIsLoading(true);
     try {
-      const res = await categoriesApi.getAll();
-      setCategories(res.data.categories || res.data);
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to load categories', 'error');
+      const res = await categoriesApi.list();
+      setCategories(res);
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to load categories'), 'error');
     } finally {
       setIsLoading(false);
     }
@@ -70,8 +67,8 @@ export const CategoriesPage: React.FC = () => {
       }
       setIsModalOpen(false);
       loadCategories();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to save category', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to save category'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -80,12 +77,12 @@ export const CategoriesPage: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await categoriesApi.delete(deleteTarget.id);
+      await categoriesApi.remove(deleteTarget.id);
       notify('Category deleted', 'success');
       setDeleteTarget(null);
       loadCategories();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to delete category', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to delete category'), 'error');
     }
   };
 

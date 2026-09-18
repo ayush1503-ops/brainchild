@@ -37,7 +37,11 @@ export function securityHeaders() {
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
     'img-src': ["'self'", 'data:', 'blob:', 'https:'],
     'media-src': ["'self'", 'blob:'],
-    'connect-src': dev ? ["'self'", 'ws:', 'wss:', 'http://localhost:*'] : ["'self'"],
+    // The browser SPA talks to Supabase (REST + realtime) in addition to the
+    // same-origin API, so the storage CDN host must be an allowed connect target.
+    'connect-src': dev
+      ? ["'self'", 'ws:', 'wss:', 'http://localhost:*', 'https://*.supabase.co', 'wss://*.supabase.co']
+      : ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co'],
     'worker-src': ["'self'", 'blob:'],
     'manifest-src': ["'self'"],
   };

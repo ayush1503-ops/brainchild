@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 
 import { config, configReport } from './config/env.js';
 import { logger } from './utils/logger.js';
@@ -195,9 +196,28 @@ async function start(): Promise<void> {
   });
 }
 
-start().catch((error) => {
-  logger.error('Failed to start API', { message: error instanceof Error ? error.message : String(error) });
-  process.exit(1);
-});
+/**
+ * Only boot the HTTP server when this file is executed directly
+ * (`tsx src/index.ts` / `node dist/index.js`). When the app is imported as a
+ * module — e.g. by the Vercel serverless entry in `api/[...path].ts` — Vercel
+ * owns the HTTP layer and `app.listen()` must never run.
+ */
+const isDirectRun =
+  !process.env.VERCEL &&
+  (() => {
+    try {
+      const entry = process.argv[1];
+      return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
+    } catch {
+      return false;
+    }
+  })();
+
+if (isDirectRun) {
+  start().catch((error) => {
+    logger.error('Failed to start API', { message: error instanceof Error ? error.message : String(error) });
+    process.exit(1);
+  });
+}
 
 export default app;

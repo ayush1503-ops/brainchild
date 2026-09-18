@@ -5,10 +5,11 @@ export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'EDITOR';
 export interface AdminUser {
   id: string;
   email: string;
-  name: string;
+  name?: string | null;
   role: Role;
-  avatarColor: string;
-  isActive: boolean;
+  permissions?: string[];
+  avatarColor?: string;
+  isActive?: boolean;
   lastLoginAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -239,6 +240,10 @@ export interface ActivityEntry {
   entityType?: string | null;
   entityId?: string | null;
   description?: string | null;
+  /** Human summary written by the audit trail (e.g. “Updated content block”). */
+  summary?: string | null;
+  /** Email of the admin who performed the action. */
+  actorEmail?: string | null;
   ipAddress?: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;

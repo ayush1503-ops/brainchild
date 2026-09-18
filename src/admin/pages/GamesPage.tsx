@@ -5,8 +5,8 @@ import {
   ExternalLink, Flag, Star, Loader2
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { gamesApi } from '../utils/api';
-import { Game } from '../types';
+import { gamesApi, type GameFilters } from '../utils/api';
+import type { AdminGame } from '../types';
 import { notify } from '../utils/toast';
 
 const STATUS_OPTIONS = [
@@ -25,21 +25,33 @@ const STATUS_BADGES: Record<string, string> = {
 };
 
 export const GamesPage: React.FC = () => {
-  const [games, setGames] = useState<Game[]>([]);
+  const [games, setGames] = useState<AdminGame[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [sortBy, setSortBy] = useState<PaginationParams['sortBy']>('createdAt');
-  const [sortOrder, setSortOrder] = useState<PaginationParams['sortOrder']>('desc');
+  const [sortBy, setSortBy] = useState<GameFilters['sortBy']>('createdAt');
+  const [sortOrder, setSortOrder] = useState<GameFilters['sortOrder']>('desc');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchGames = async () => {
     setIsLoading(true);
     try {
-      const res = await gamesApi.getAll({ page: pagination.page, limit: pagination.limit, sortBy, sortOrder, search: search || undefined });
-      setGames(res.data.games);
-      setPagination(res.data.pagination);
+      const res = await gamesApi.list({
+        page: pagination.page,
+        limit: pagination.limit,
+        sortBy,
+        sortOrder,
+        status: statusFilter || undefined,
+        search: search || undefined,
+      });
+      setGames(res.items);
+      setPagination({
+        page: res.pagination.page,
+        limit: res.pagination.limit,
+        total: res.pagination.total,
+        totalPages: res.pagination.pages,
+      });
     } catch (error) {
       notify('Failed to load games', 'error');
     } finally {
@@ -47,7 +59,7 @@ export const GamesPage: React.FC = () => {
     }
   };
 
-  useEffect(() => { fetchGames(); }, [pagination.page, sortBy, sortOrder]);
+  useEffect(() => { fetchGames(); }, [pagination.page, sortBy, sortOrder, statusFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +67,7 @@ export const GamesPage: React.FC = () => {
     fetchGames();
   };
 
-  const handleStatusChange = async (game: Game, published: boolean) => {
+  const handleStatusChange = async (game: AdminGame, published: boolean) => {
     try {
       await gamesApi.publish(game.id, published);
       notify(published ? 'Game published' : 'Game unpublished', 'success');
@@ -65,9 +77,9 @@ export const GamesPage: React.FC = () => {
     }
   };
 
-  const handleFeaturedChange = async (game: Game, featured: boolean) => {
+  const handleFeaturedChange = async (game: AdminGame, featured: boolean) => {
     try {
-      await gamesApi.featured(game.id, featured);
+      await gamesApi.feature(game.id, featured);
       notify(featured ? 'Game featured' : 'Game unfeatured', 'success');
       fetchGames();
     } catch {
@@ -75,11 +87,16 @@ export const GamesPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this game permanently?')) return;
-    setDeletingId(id);
+  const handleDelete = async (game: AdminGame) => {
+    const confirmText = window.prompt(`To delete "${game.title}" for good, type its slug (${game.slug}) to confirm:`);
+    if (confirmText === null) return;
+    if (confirmText.trim() !== game.slug) {
+      notify('Slug did not match — nothing was deleted.', 'error');
+      return;
+    }
+    setDeletingId(game.id);
     try {
-      await gamesApi.delete(id);
+      await gamesApi.remove(game.id, confirmText.trim());
       notify('Game deleted', 'success');
       fetchGames();
     } catch {
@@ -192,7 +209,7 @@ export const GamesPage: React.FC = () => {
                         <Link to={`/admin/games/${game.id}`} className="grid h-9 w-9 place-items-center rounded-lg border-2 border-ink/15 bg-cream text-ink hover:bg-sun transition-colors" title="Edit"><Edit2 size={14} /></Link>
                         <Link to={`/admin/games/${game.id}`} className="grid h-9 w-9 place-items-center rounded-lg border-2 border-ink/15 bg-cream text-ink hover:bg-sun transition-colors" title="View"><Eye size={14} /></Link>
                         <button onClick={() => handleDuplicate(game.id)} className="grid h-9 w-9 place-items-center rounded-lg border-2 border-ink/15 bg-cream text-ink hover:bg-sun transition-colors" title="Duplicate"><Copy size={14} /></button>
-                        <button onClick={() => handleDelete(game.id)} disabled={deletingId === game.id} className="grid h-9 w-9 place-items-center rounded-lg border-2 border-ink/15 bg-cream text-coral hover:bg-coral hover:text-white transition-colors disabled:opacity-50" title="Delete">
+                        <button onClick={() => handleDelete(game)} disabled={deletingId === game.id} className="grid h-9 w-9 place-items-center rounded-lg border-2 border-ink/15 bg-cream text-coral hover:bg-coral hover:text-white transition-colors disabled:opacity-50" title="Delete">
                           {deletingId === game.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                         </button>
                       </div>

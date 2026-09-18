@@ -3,9 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "dev:server": "npm run dev --prefix server",
+    "db:setup": "npm run db:setup --prefix server",
+    "build": "npm run build:server && vite build",
+    "build:server": "npm run build --prefix server",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
@@ -17,6 +23,7 @@
     "@tanstack/react-query": "^5.103.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/three": "^0.186.0",
+    "@vercel/node": "^13.0.1",
     "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.20.0",
     "canvas-confetti": "^1.9.4",

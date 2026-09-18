@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Newspaper, Plus, Search, Filter, Edit3, Trash2, Eye, Calendar, Tag, Image as ImageIcon } from 'lucide-react';
-import { newsApi, categoriesApi, uploadApi } from '../utils/api';
+import { newsApi, categoriesApi, mediaApi, ApiError } from '../utils/api';
+import type { NewsFilters } from '../utils/api';
+import type { AdminPost } from '../types';
 import { notify } from '../utils/toast';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 
@@ -20,6 +22,31 @@ interface NewsItem {
   featured: boolean;
   publishedAt?: string;
   createdAt: string;
+}
+
+/** Maps the API's AdminPost shape onto this page's working model. */
+function toNewsItem(post: AdminPost): NewsItem {
+  return {
+    id: post.id,
+    slug: post.slug,
+    title: post.title,
+    excerpt: post.excerpt,
+    content: post.content,
+    coverImage: post.coverImage,
+    categoryId: post.categoryId ?? '',
+    category: { id: post.categoryId ?? '', name: post.category, color: post.categoryColor ?? '' },
+    authorName: post.author?.name ?? 'Studio Team',
+    authorRole: post.author?.role ?? 'Editor',
+    tags: post.tags,
+    status: post.status,
+    featured: post.featured,
+    publishedAt: post.publishedAt ?? undefined,
+    createdAt: post.createdAt,
+  };
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
 }
 
 export const NewsAdminPage: React.FC = () => {
@@ -53,13 +80,13 @@ export const NewsAdminPage: React.FC = () => {
     setIsLoading(true);
     try {
       const [newsRes, catRes] = await Promise.all([
-        newsApi.getAll({ search: search || undefined, status: statusFilter !== 'ALL' ? statusFilter : undefined }),
-        categoriesApi.getAll()
+        newsApi.list({ search: search || undefined, status: statusFilter as NewsFilters['status'] }),
+        categoriesApi.list()
       ]);
-      setArticles(newsRes.data.posts || newsRes.data);
-      setCategories(catRes.data.categories || catRes.data);
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to load news posts', 'error');
+      setArticles(newsRes.items.map(toNewsItem));
+      setCategories(catRes);
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to load news posts'), 'error');
     } finally {
       setIsLoading(false);
     }
@@ -107,11 +134,11 @@ export const NewsAdminPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const res = await uploadApi.uploadImage(file);
-      setFormData(prev => ({ ...prev, coverImage: res.data.url }));
+      const asset = await mediaApi.upload(file);
+      setFormData(prev => ({ ...prev, coverImage: asset.url }));
       notify('Cover image uploaded', 'success');
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to upload image', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to upload image'), 'error');
     }
   };
 
@@ -139,8 +166,8 @@ export const NewsAdminPage: React.FC = () => {
 
       setIsModalOpen(false);
       loadData();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to save article', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to save article'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -149,12 +176,12 @@ export const NewsAdminPage: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await newsApi.delete(deleteTarget.id);
+      await newsApi.remove(deleteTarget.id, deleteTarget.slug);
       notify('Article deleted', 'success');
       setDeleteTarget(null);
       loadData();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to delete article', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to delete article'), 'error');
     }
   };
 

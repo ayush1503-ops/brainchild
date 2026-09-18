@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Download, Search, Filter, Trash2, CheckCircle2, XCircle } from 'lucide-react';
-import { subscribersApi } from '../utils/api';
+import { subscribersApi, ApiError } from '../utils/api';
 import { notify } from '../utils/toast';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
 
 interface SubscriberItem {
   id: string;
@@ -23,13 +27,13 @@ export const SubscribersPage: React.FC = () => {
   const loadSubscribers = async () => {
     setIsLoading(true);
     try {
-      const res = await subscribersApi.getAll({
+      const res = await subscribersApi.list({
         search: search || undefined,
         status: statusFilter !== 'ALL' ? statusFilter : undefined
       });
-      setSubscribers(res.data.subscribers || res.data);
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to load subscribers', 'error');
+      setSubscribers(res.items);
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to load subscribers'), 'error');
     } finally {
       setIsLoading(false);
     }
@@ -42,12 +46,12 @@ export const SubscribersPage: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await subscribersApi.delete(deleteTarget.id);
+      await subscribersApi.remove(deleteTarget.id);
       notify('Subscriber removed', 'success');
       setDeleteTarget(null);
       loadSubscribers();
-    } catch (err: any) {
-      notify(err.response?.data?.error || 'Failed to remove subscriber', 'error');
+    } catch (err) {
+      notify(errorMessage(err, 'Failed to remove subscriber'), 'error');
     }
   };
 
