@@ -5,8 +5,8 @@ import { motion } from 'motion/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useAuth } from '../../context/AuthContext';
-import { notify } from '../../utils/toast';
+import { useAuth } from '../context/AuthContext';
+import { notify } from '../utils/toast';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),

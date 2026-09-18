@@ -4,10 +4,15 @@ import { useStudio } from '../../context/StudioContext';
 import { Reveal } from '../ui/Reveal';
 import { DiceBit, StarSticker } from '../ui/Bits';
 
-const PERKS = ['🗓️ 4-day work week', '💰 Profit sharing', '🛑 Zero crunch', '🌍 Remote-first', '🎮 $4k gear budget'];
+/** Fallback perks — the “careers.intro” block in the CMS overrides these. */
+const DEFAULT_PERKS = ['🗓️ 4-day work week', '💰 Profit sharing', '🛑 Zero crunch', '🌍 Remote-first', '🎮 $4k gear budget'];
 
 export const CareersTeaserSection: React.FC = () => {
-  const { jobs, setCurrentRoute, setSelectedJob } = useStudio();
+  const { jobs, setCurrentRoute, setSelectedJob, block } = useStudio();
+  const careers = block('careers.intro', { benefits: [], applicationNote: 'Applications read by humans · reply within a week' });
+  const PERKS = careers.benefits?.length
+    ? careers.benefits.map((benefit: any) => `${benefit.emoji ?? '•'} ${benefit.title}`)
+    : DEFAULT_PERKS;
   const open = jobs.filter((j) => j.status === 'open').slice(0, 3);
 
   return (

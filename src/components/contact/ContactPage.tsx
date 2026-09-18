@@ -3,14 +3,29 @@ import { Mail, MessageCircle, MapPin, Clock } from 'lucide-react';
 import { ContactForm } from './ContactForm';
 import { Reveal } from '../ui/Reveal';
 import { Squiggle, ControllerBit, StarSticker, JoystickBit } from '../ui/Bits';
+import { useStudio } from '../../context/StudioContext';
 
-const FAQ = [
-  { q: 'How fast do you reply?', a: 'Within 48 hours, by a human with a name.' },
-  { q: 'Press & review keys?', a: 'Email us with your outlet and we’ll sort you out same-day.' },
-  { q: 'Bug reports?', a: 'Yes please! Player Support category, screenshots appreciated.' }
-];
+/** Fallbacks — the “contact.details” block in the CMS overrides these. */
+const DEFAULT_DETAILS = {
+  email: 'hello@brainchild.games',
+  discord: 'Discord · 18,000 players',
+  address: '4210 Saint-Laurent, Montreal',
+  hours: 'Replies within 48h, Mon–Thu',
+  faq: [
+    { q: 'How fast do you reply?', a: 'Within 48 hours, by a human with a name.' },
+    { q: 'Press & review keys?', a: 'Email us with your outlet and we’ll sort you out same-day.' },
+    { q: 'Bug reports?', a: 'Yes please! Player Support category, screenshots appreciated.' },
+  ],
+};
 
 export const ContactPage: React.FC = () => {
+  const { block } = useStudio();
+  const details = block('contact.details', DEFAULT_DETAILS);
+  const FAQ = (details.faq?.length ? details.faq : DEFAULT_DETAILS.faq).map((item: any) => ({
+    q: item.q ?? item.question,
+    a: item.a ?? item.answer,
+  }));
+
   return (
     <div id="contact-page" className="relative min-h-screen overflow-hidden pt-32 pb-24 sm:pt-36">
       <div className="pointer-events-none absolute -right-32 top-24 h-96 w-96 rounded-full bg-coral/10 blur-3xl" aria-hidden="true" />
@@ -56,16 +71,16 @@ export const ContactPage: React.FC = () => {
                 </div>
                 <div className="mt-5 space-y-2.5">
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <Mail size={14} className="shrink-0 text-sun" /> hello@brainchild.games
+                    <Mail size={14} className="shrink-0 text-sun" /> {details.email}
                   </div>
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <MessageCircle size={14} className="shrink-0 text-sun" /> Discord · 18,000 players
+                    <MessageCircle size={14} className="shrink-0 text-sun" /> {details.discord}
                   </div>
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <MapPin size={14} className="shrink-0 text-sun" /> 4210 Saint-Laurent, Montreal
+                    <MapPin size={14} className="shrink-0 text-sun" /> {details.address}
                   </div>
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <Clock size={14} className="shrink-0 text-sun" /> Replies within 48h, Mon–Thu
+                    <Clock size={14} className="shrink-0 text-sun" /> {details.hours}
                   </div>
                 </div>
               </div>

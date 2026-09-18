@@ -5,8 +5,15 @@ import { ContactForm } from '../contact/ContactForm';
 import { Reveal } from '../ui/Reveal';
 import { Squiggle, ControllerBit, CoinBit } from '../ui/Bits';
 
+const DEFAULT_DETAILS = {
+  email: 'hello@brainchild.games',
+  discord: 'Discord · 18,000 players',
+  address: 'Montreal + everywhere',
+};
+
 export const ContactBand: React.FC = () => {
-  const { setCurrentRoute } = useStudio();
+  const { setCurrentRoute, block } = useStudio();
+  const details = block('contact.details', DEFAULT_DETAILS);
 
   return (
     <section id="contact-band" className="relative overflow-hidden bg-sand/60 py-24 sm:py-28">
@@ -52,13 +59,13 @@ export const ContactBand: React.FC = () => {
 
                 <div className="mt-5 space-y-2.5">
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <Mail size={14} className="shrink-0 text-sun" /> hello@brainchild.games
+                    <Mail size={14} className="shrink-0 text-sun" /> {details.email}
                   </div>
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <MessageCircle size={14} className="shrink-0 text-sun" /> Discord · 18,000 players
+                    <MessageCircle size={14} className="shrink-0 text-sun" /> {details.discord}
                   </div>
                   <div className="flex items-center gap-3 rounded-xl border-2 border-ink/25 bg-white/15 px-4 py-2.5 text-xs font-bold text-white">
-                    <MapPin size={14} className="shrink-0 text-sun" /> Montreal + everywhere
+                    <MapPin size={14} className="shrink-0 text-sun" /> {details.address}
                   </div>
                 </div>
               </div>
