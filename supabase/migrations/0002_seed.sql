@@ -8,8 +8,10 @@
 -- (Authentication → Add user) — after inviting/inserting them, run:
 --
 --   INSERT INTO admin_users (id, name, role, is_active)
---   VALUES ((SELECT id FROM auth.users WHERE email = 'you@brainchild.games'),
---           'Studio Admin', 'SUPER_ADMIN', true);
+--   VALUES ((SELECT id FROM auth.users WHERE email = 'brainchildgamesin@gmail.com'),
+--           'Brainchild Games', 'SUPER_ADMIN', true);
+--
+-- Primary admin brainchildgamesin@gmail.com is always valid SUPER_ADMIN.
 -- =============================================================================
 
 -- Default categories ---------------------------------------------------------

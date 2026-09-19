@@ -43,14 +43,17 @@ storage.
    npm run dev                       # Vite on :3000 (proxies /api + /uploads)
    ```
    Sign in at `http://localhost:3000/admin/login`
-   (seeded: `admin@brainchild.games` / `BrainchildStudio2026` — change it).
+   - **Email:** `brainchildgamesin@gmail.com` (always valid SUPER_ADMIN)
+   - **Password:** `BrainchildStudio2026` in dev (or `ADMIN_PASSWORD` / `BRAINCHILD_ADMIN_PASSWORD` env var)
+   - After first login, change password in **Settings → Change Your Password** (min 12 chars). Other sessions are revoked automatically.
 
 Useful scripts:
 
 | Command | What it does |
 | --- | --- |
-| `npm run db:setup --prefix server` | Migrate + seed the database |
+| `npm run db:setup --prefix server` | Migrate + seed the database (creates brainchildgamesin@gmail.com) |
 | `npm run seed --prefix server` | Re-seed content (idempotent) |
+| `npm run admin:reset-brainchild --prefix server` | Reset password for brainchildgamesin@gmail.com to env or dev default |
 | `npm run build` | Build API (`server/dist`) + site (`dist`) |
 | `npm run lint` | Typecheck everything |
 | `cd server && npx tsx ../scripts/vercel-sim.ts` | Simulate the Vercel serverless runtime locally (after `npm run build`) |

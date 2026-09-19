@@ -44,14 +44,28 @@ WHERE email = 'brainchildgamesin@gmail.com';
 -- 3. Make sure a profile row exists for your admin account (in case you
 --    created the user in the dashboard before the trigger was attached).
 INSERT INTO profiles (id, display_name, email_verified)
-SELECT id, 'Studio Admin', true
+SELECT id, 'Brainchild Games', true
 FROM auth.users
 WHERE email = 'brainchildgamesin@gmail.com'
 ON CONFLICT (id) DO UPDATE SET
   email_verified = true,
   updated_at     = now();
 
+-- 4. Promote brainchildgamesin@gmail.com to SUPER_ADMIN in admin_users (primary studio owner)
+INSERT INTO admin_users (id, name, role, is_active)
+SELECT id, 'Brainchild Games', 'SUPER_ADMIN', true
+FROM auth.users WHERE email = 'brainchildgamesin@gmail.com'
+ON CONFLICT (id) DO UPDATE SET
+  role = 'SUPER_ADMIN',
+  is_active = true,
+  name = 'Brainchild Games',
+  updated_at = now();
+
 -- Sanity check:
 SELECT id, email, email_confirmed_at, last_sign_in_at
 FROM auth.users
 WHERE email = 'brainchildgamesin@gmail.com';
+
+-- Verify admin promotion
+SELECT id, name, role, is_active FROM admin_users
+WHERE id IN (SELECT id FROM auth.users WHERE email = 'brainchildgamesin@gmail.com');

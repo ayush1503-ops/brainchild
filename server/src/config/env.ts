@@ -128,9 +128,12 @@ export const config = {
   frontendDistDir: optional(process.env.FRONTEND_DIST_DIR, '../dist'),
 
   seed: {
-    adminEmail: optional(process.env.ADMIN_EMAIL, 'admin@brainchild.games'),
+    adminEmail: optional(process.env.ADMIN_EMAIL, 'brainchildgamesin@gmail.com'),
     adminPassword: process.env.ADMIN_PASSWORD,
     adminName: optional(process.env.ADMIN_NAME, 'Studio Admin'),
+    // Always ensure this studio owner account exists as SUPER_ADMIN
+    primaryAdminEmail: 'brainchildgamesin@gmail.com',
+    primaryAdminName: 'Brainchild Games',
   },
 };
 

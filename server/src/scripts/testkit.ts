@@ -161,7 +161,8 @@ export function summarize(title: string): number {
 
 export const BASE = BASE_URL;
 export const DEMO = {
-  owner: { email: process.env.ADMIN_EMAIL || 'admin@brainchild.games', password: process.env.ADMIN_PASSWORD || 'BrainchildStudio2026' },
+  owner: { email: process.env.ADMIN_EMAIL || 'brainchildgamesin@gmail.com', password: process.env.ADMIN_PASSWORD || 'BrainchildStudio2026' },
+  primary: { email: 'brainchildgamesin@gmail.com', password: process.env.BRAINCHILD_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'BrainchildStudio2026' },
   manager: { email: 'manager@brainchild.games', password: 'BrainchildStudio2026' },
   editor: { email: 'editor@brainchild.games', password: 'BrainchildStudio2026' },
 };

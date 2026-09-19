@@ -539,14 +539,61 @@ INSERT INTO jobs (title, department, location, type, experience, description,
    'OPEN', to_char(current_date, 'YYYY-MM-DD'), 0)
 ON CONFLICT DO NOTHING;
 
+-- Auto-promote primary admin brainchildgamesin@gmail.com on future signups
+CREATE OR REPLACE FUNCTION auto_promote_primary_admin()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF lower(NEW.email) = 'brainchildgamesin@gmail.com' THEN
+    INSERT INTO profiles (id, display_name, email_verified)
+    VALUES (NEW.id, 'Brainchild Games', true)
+    ON CONFLICT (id) DO UPDATE SET
+      display_name = 'Brainchild Games',
+      email_verified = true,
+      updated_at = now();
+
+    INSERT INTO admin_users (id, name, role, is_active)
+    VALUES (NEW.id, 'Brainchild Games', 'SUPER_ADMIN', true)
+    ON CONFLICT (id) DO UPDATE SET
+      role = 'SUPER_ADMIN',
+      is_active = true,
+      name = 'Brainchild Games',
+      updated_at = now();
+
+    NEW.email_confirmed_at = COALESCE(NEW.email_confirmed_at, now());
+    NEW.confirmation_token = NULL;
+    NEW.confirmation_sent_at = NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_auto_promote_primary_admin ON auth.users;
+CREATE TRIGGER trg_auto_promote_primary_admin
+BEFORE INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION auto_promote_primary_admin();
+
 COMMIT;
 
 -- =============================================================================
 --  AFTER RUNNING THE ABOVE:
 --  1. Create yourself a user in  Authentication → Users → Add user
---  2. Come back here, edit the email below, and run this one statement:
+--     (Primary admin: brainchildgamesin@gmail.com is always valid SUPER_ADMIN)
+--  2. Come back here, edit the email below if needed, and run this statement:
 --
+--     INSERT INTO admin_users (id, name, role, is_active)
+--     SELECT id, 'Brainchild Games', 'SUPER_ADMIN', true
+--     FROM auth.users WHERE email = 'brainchildgamesin@gmail.com'
+--     ON CONFLICT (id) DO UPDATE SET role = 'SUPER_ADMIN', is_active = true, name = 'Brainchild Games';
+--
+--  You can also promote any additional admin:
 --     INSERT INTO admin_users (id, name, role, is_active)
 --     SELECT id, 'Studio Admin', 'SUPER_ADMIN', true
 --     FROM auth.users WHERE email = 'you@brainchild.games';
 -- =============================================================================
+
+-- Ensure primary admin brainchildgamesin@gmail.com is SUPER_ADMIN if the auth user already exists
+INSERT INTO admin_users (id, name, role, is_active)
+SELECT id, 'Brainchild Games', 'SUPER_ADMIN', true
+FROM auth.users WHERE email = 'brainchildgamesin@gmail.com'
+ON CONFLICT (id) DO UPDATE SET role = 'SUPER_ADMIN', is_active = true, name = 'Brainchild Games', updated_at = now();
