@@ -168,12 +168,32 @@ export const authApi = {
   async changePassword(currentPassword: string, newPassword: string) {
     await client.post('/auth/change-password', { currentPassword, newPassword });
   },
+  /**
+   * Requests a reset link. Always resolves with the same message whether or not
+   * the address exists (no account enumeration).
+   *
+   * `emailDeliveryEnabled` describes the *deployment*, not the address, so the
+   * form can warn when no mail transport is configured instead of promising an
+   * email that will never arrive.
+   */
   async forgotPassword(email: string) {
-    const { data } = await client.post<{ message: string; devResetUrl?: string }>('/auth/forgot-password', { email });
+    const { data } = await client.post<{
+      message: string;
+      devResetUrl?: string;
+      emailDeliveryEnabled?: boolean;
+      emailDeliveryReason?: string;
+    }>('/auth/forgot-password', { email });
     return data;
   },
-  async resetPassword(token: string, password: string) {
-    const { data } = await client.post<{ message: string }>('/auth/reset-password', { token, password });
+  /**
+   * Consumes a one-time token from the reset email.
+   *
+   * The payload key is `newPassword`, not `password`: the route validates with
+   * a `.strict()` Zod object (see `server/src/routes/auth.ts`), so a wrong key
+   * is rejected with a 400 before the password is ever touched.
+   */
+  async resetPassword(token: string, newPassword: string) {
+    const { data } = await client.post<{ message: string }>('/auth/reset-password', { token, newPassword });
     return data;
   },
   async sessions() {

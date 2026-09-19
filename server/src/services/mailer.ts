@@ -16,10 +16,13 @@ type Nodemailer = typeof import('nodemailer');
  * Loads nodemailer at runtime with a bundler-opaque module name.
  *
  * Why: a static `import('nodemailer')` would make the serverless bundler inline
- * nodemailer + iconv-lite (~700 KB) into the Vercel function. On Vercel, SMTP
- * delivery is therefore best-effort: if the package isn't resolvable in the
- * function environment the mailer degrades gracefully (logged, no crash).
- * Local/VM deployments have node_modules present, so SMTP works out of the box.
+ * nodemailer + iconv-lite (~700 KB) into the Vercel function. Requiring it by a
+ * computed name keeps it out of the bundle graph, while `nodemailer` still
+ * lives in the root `package.json` `dependencies`, so `npm ci` installs it and
+ * Vercel's function tracing ships it in `node_modules` alongside the handler.
+ *
+ * If the package is somehow not resolvable, the mailer degrades gracefully
+ * (logged, no crash) rather than taking the request down with it.
  */
 function loadNodemailer(): Nodemailer | null {
   try {
@@ -31,6 +34,39 @@ function loadNodemailer(): Nodemailer | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Can this deployment actually put mail on the wire?
+ *
+ * This is a property of the *deployment* (env vars + package availability), not
+ * of the address being mailed, so it is safe to return to an anonymous caller
+ * without leaking which emails have accounts.
+ *
+ * It exists because `sendMail` deliberately never tells a caller that delivery
+ * failed for a specific address: without this, a misconfigured deployment makes
+ * the reset form promise an email that will never arrive, and the only evidence
+ * is a server-side log line nobody is watching.
+ */
+export function mailTransportReady(): { ready: boolean; transport: string; reason?: string } {
+  const transport = config.mail.transport;
+
+  if (transport === 'console') {
+    // Dev prints the message (and the link) to the server log.
+    return {
+      ready: !config.isProduction,
+      transport,
+      reason: config.isProduction ? 'console_transport_in_production' : undefined,
+    };
+  }
+
+  if (!config.mail.smtpHost) {
+    return { ready: false, transport, reason: 'smtp_not_configured' };
+  }
+  if (!loadNodemailer()) {
+    return { ready: false, transport, reason: 'nodemailer_missing' };
+  }
+  return { ready: true, transport };
 }
 
 /**

@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Brainchild Studio — secure API and admin/CMS backend. Runtime and dev dependencies are installed from the repository root's package.json; only the local-dev-only optional packages (embedded Postgres for the dev database, nodemailer for SMTP) are installed here.",
+  "description": "Brainchild Studio — secure API and admin/CMS backend. All runtime dependencies (including nodemailer, used for password-reset email) are declared in the repository root package.json so a single `npm ci` at the root installs everything the Vercel function needs. Only the local-dev-only embedded Postgres package is installed here.",
   "optionalDependencies": {
-    "embedded-postgres": "17.10.0-beta.17",
-    "nodemailer": "^6.9.16"
+    "embedded-postgres": "17.10.0-beta.17"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

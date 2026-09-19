@@ -111,9 +111,13 @@ administrator credentials; keep Row Level Security enabled on exposed tables.
 If switching projects, update both values together. Local development still
 uses `.env.local` as described above.
 
-Redeploy after changing these values: Vite embeds them at build time. For
-password recovery, allow `https://<your-domain>/admin/reset-password` in
-Supabase **Authentication → URL Configuration → Redirect URLs**.
+Redeploy after changing these values: Vite embeds them at build time.
+
+Password recovery for the **admin console** is handled by this project's own
+API, not by Supabase Auth — so no Supabase redirect URL is required for it.
+Set `APP_BASE_URL` to your deployed origin instead; that is what the reset link
+is built from. (Supabase's redirect allow-list only matters for player OAuth /
+magic links on the public site.)
 
 Never commit `DATABASE_URL`, database passwords, or service-role/secret keys.
 Set those only in Vercel's environment settings (server-side, without `VITE_`).
@@ -138,11 +142,23 @@ Set those only in Vercel's environment settings (server-side, without `VITE_`).
 | `STORAGE_BUCKET` | `media` (default) |
 | `SERVE_FRONTEND` | `false` (Vercel serves the static build itself) |
 
-Optional (password-reset emails via SMTP — note: the serverless bundle keeps
-`nodemailer` out, so on Vercel the mailer degrades gracefully; set these when
-running the API in a VM/container for real SMTP delivery):
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`,
-`APP_BASE_URL`.
+**Required in production for password-reset emails** (the admin reset link is
+sent by this API over SMTP; without these the form still replies "a reset link
+is on its way" while nothing is sent, so the page now surfaces
+`emailDeliveryEnabled: false` instead):
+
+| Variable | Value |
+| --- | --- |
+| `APP_BASE_URL` | your deployed origin, e.g. `https://brainchild.vercel.app` |
+| `SMTP_HOST` | e.g. `smtp.postmarkapp.com` |
+| `SMTP_PORT` | `587` (STARTTLS) or `465` (implicit TLS) |
+| `SMTP_USER` / `SMTP_PASSWORD` | provider credentials |
+| `MAIL_FROM` | `Brainchild Studio <no-reply@yourdomain>` |
+
+`nodemailer` is a normal root dependency, so `npm ci` installs it and Vercel's
+function tracing ships it — SMTP works on Vercel, not just in a VM. If the
+transport is misconfigured the API logs `Password reset email was not
+delivered` with the reason, and returns `emailDeliveryEnabled: false`.
 
 ### 4. Deploy
 
