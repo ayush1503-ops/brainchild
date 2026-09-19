@@ -83,8 +83,53 @@ import { supabase } from './lib/supabase'
 await supabase.auth.signInWithPassword({ email: 'brainchildgamesin@gmail.com', password: '...' })
 ```
 
-## 5. Changing password
+## 5. Current password & changing it
 
-After first login, go to Team → your account → Set password, or use Forgot Password flow.
+### Current password (dev)
+- **Email:** `brainchildgamesin@gmail.com`
+- **Password:** `BrainchildStudio2026` (12+ chars, meets policy: letter + number)
+- This is set by:
+  - `server/db/migrations/0002_add_brainchild_admin.sql` (fallback hash)
+  - `server/scripts/seed.ts` DEV_PASSWORD
+  - Can be overridden by env var `BRAINCHILD_ADMIN_PASSWORD` or `ADMIN_PASSWORD`
 
-Never commit real passwords — use env vars.
+### How to change after login (recommended)
+
+**Option A — UI (Settings page):**
+1. Login at `/admin/login` with `brainchildgamesin@gmail.com` / `BrainchildStudio2026`
+2. Go to **Settings** (left sidebar) → **Change Your Password** card at top
+3. Enter current password, new password (min 12 chars), confirm
+4. Click **Change Password** — other devices will be signed out, audit logged
+
+**Option B — CLI reset (server):**
+```bash
+# Set to known password
+cd server
+npm run admin:reset-brainchild
+# Or set custom
+BRAINCHILD_ADMIN_PASSWORD=MyNewStrongPass123 npm run admin:reset-brainchild
+# Or use ADMIN_PASSWORD env
+ADMIN_PASSWORD=MyNewStrongPass123 npm run seed
+```
+
+**Option C — Forgot password flow:**
+1. Go to `/admin/forgot-password`
+2. Enter `brainchildgamesin@gmail.com`
+3. Check Gmail inbox (including Spam/Promotions) for reset link
+4. Link points to `/admin/reset-password?token=...` → set new password
+
+**Option D — Supabase dashboard (if using Supabase auth):**
+1. Supabase Dashboard → Authentication → Users → find `brainchildgamesin@gmail.com`
+2. Click ⋯ → Reset password or send magic link
+
+### Production
+- Set `ADMIN_PASSWORD` in Vercel env to a strong unique password (min 12 chars)
+- Run seed: `DATABASE_URL=... ADMIN_PASSWORD=StrongPass123 npm run db:setup --prefix server`
+- Immediately change via Settings UI after first login
+- Never commit real passwords — use env vars and secret manager
+
+### Security notes
+- Passwords are hashed with SHA256 → bcrypt 12 rounds (see `server/src/utils/crypto.ts`)
+- Change triggers `PASSWORD_CHANGED` audit log and revokes other sessions
+- Failed logins lock account for 15 min after 5 attempts — unlock via Team → Unlock or CLI reset
+- Primary admin `brainchildgamesin@gmail.com` is protected: cannot be deleted if last SUPER_ADMIN, cannot deactivate self
