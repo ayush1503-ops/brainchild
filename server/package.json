@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Brainchild Studio — secure API and admin/CMS backend",
+  "description": "Brainchild Studio — secure API and admin/CMS backend. Runtime and dev dependencies are installed from the repository root's package.json; only the local-dev-only optional packages (embedded Postgres for the dev database, nodemailer for SMTP) are installed here.",
+  "optionalDependencies": {
+    "embedded-postgres": "17.10.0-beta.17",
+    "nodemailer": "^6.9.16"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
@@ -21,40 +25,5 @@
     "backup": "bash scripts/backup.sh",
     "restore": "bash scripts/restore.sh",
     "db:migrate": "node scripts/migrate.mjs"
-  },
-  "dependencies": {
-    "@supabase/storage-js": "^2.7.0",
-    "bcryptjs": "^2.4.3",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "drizzle-orm": "^0.45.2",
-    "express": "^4.21.1",
-    "express-rate-limit": "^7.4.1",
-    "helmet": "^8.0.0",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.4.0",
-    "pg": "^8.23.0",
-    "sanitize-html": "^2.13.0",
-    "zod": "^3.23.8"
-  },
-  "optionalDependencies": {
-    "embedded-postgres": "17.10.0-beta.17",
-    "nodemailer": "^6.9.16"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cookie-parser": "^1.4.8",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.6",
-    "@types/multer": "^1.4.12",
-    "@types/node": "^22.10.0",
-    "@types/nodemailer": "^6.4.16",
-    "@types/pg": "^8.23.1",
-    "@types/sanitize-html": "^2.13.0",
-    "drizzle-kit": "^0.31.10",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
   }
 }

@@ -21,11 +21,14 @@ storage.
 
 **Prerequisites:** Node.js 20+
 
-1. Install dependencies (frontend **and** API):
+1. Install dependencies:
    ```bash
-   npm install
-   npm install --prefix server
+   npm install                  # site + API runtime + dev tooling (one lockfile)
+   npm install --prefix server  # optional: embedded Postgres (local dev DB) + nodemailer (SMTP)
    ```
+   The second install is only needed for the local dev database
+   (`npm run db:up --prefix server`) and local SMTP delivery — the API
+   runs fine without it.
 2. Start the dev database (embedded PostgreSQL, port 55432):
    ```bash
    npm run db:up --prefix server     # or: npm run db:setup (migrate + seed in one go)
@@ -55,8 +58,9 @@ Useful scripts:
 | `npm run seed --prefix server` | Re-seed content (idempotent) |
 | `npm run admin:reset-brainchild --prefix server` | Reset password for brainchildgamesin@gmail.com to env or dev default |
 | `npm run build` | Build API (`server/dist`) + site (`dist`) |
-| `npm run lint` | Typecheck everything |
-| `cd server && npx tsx ../scripts/vercel-sim.ts` | Simulate the Vercel serverless runtime locally (after `npm run build`) |
+| `npm run lint` | Typecheck the frontend |
+| `npm run lint:all` | Typecheck frontend **and** API |
+| `npx tsx scripts/vercel-sim.ts` | Simulate the Vercel serverless runtime locally (after `npm run build`) |
 
 ## Deploy to Vercel
 
@@ -148,12 +152,29 @@ vercel            # first time: link the project, answer "Yes" to the prompts
 vercel --prod
 ```
 
-The build runs `npm ci --prefix server && npm run build --prefix server &&
-vite build` (see `vercel.json`). Everything else is automatic:
+The build (see `vercel.json`) runs:
+
+1. `npm ci` — installs everything from the single root lockfile. The
+   local-dev-only optional packages (`embedded-postgres`, `nodemailer`)
+   live in `server/` and are never installed on Vercel, so no native
+   Postgres binary is downloaded in the build sandbox.
+2. `npm run build:server && vite build` — compiles the API to
+   `server/dist` and the site to `dist`.
+
+Everything else is automatic:
 
 - `dist/` → static site, `/(.*)` rewrites to `index.html` for client routing
 - `api/[...path].ts` → serverless function for every `/api/*` request
+  (the API's runtime dependencies are traced from the root `node_modules`,
+  so no `includeFiles` are needed)
 - security headers (CSP, X-Frame-Options, …) are set in `vercel.json`
+
+**Function duration:** `vercel.json` sets `maxDuration: 60` for the API
+function — the highest value accepted on every Vercel plan (Hobby caps
+serverless functions at 60 s; a higher value in `vercel.json` fails the
+build). If you're on Pro or Enterprise and need longer-running requests
+(large backup exports), raise the project's Function Max Duration and bump
+`maxDuration` in `vercel.json` to match (300 s max on Pro).
 
 ### 5. Verify
 

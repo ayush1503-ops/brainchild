@@ -17,6 +17,12 @@
  *  - Cookies are same-origin (site + API share the Vercel domain), so the
  *    JWT/CSRF cookie flow works exactly like in development.
  *
+ * Dependency layout: every runtime dependency of the API (express, pg,
+ * drizzle-orm, …) lives in the repository root `node_modules` (see the root
+ * `package.json`). Vercel's function builder traces `server/dist` from this
+ * file and resolves bare imports from the root `node_modules`, so the
+ * function stays self-contained with no `includeFiles` needed.
+ *
  * Note: the handler is typed with plain Node `http` types instead of
  * `@vercel/node` so this file has no dependencies outside the compiled server
  * bundle, and `api/tsconfig.json` keeps its type-check program separate from

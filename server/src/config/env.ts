@@ -150,6 +150,17 @@ if (isProduction && config.storageDriver === 'supabase' && (!config.supabaseUrl 
     '[config] STORAGE_DRIVER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in production.'
   );
 }
+if (isProduction && config.storageDriver === 'local') {
+  // Not an error (VM/container deploys may legitimately use disk storage), but
+  // on serverless hosts this means uploads silently land on ephemeral disk.
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[config] WARNING: production uses STORAGE_DRIVER=local. On serverless ' +
+      'hosts (Vercel) the filesystem is ephemeral and uploaded images will be ' +
+      'lost. Set STORAGE_DRIVER=supabase with SUPABASE_URL + ' +
+      'SUPABASE_SERVICE_ROLE_KEY for serverless deployments.'
+  );
+}
 
 /** Startup checklist printed once so operators can spot insecure setups fast. */
 export function configReport(): string[] {

@@ -17,12 +17,16 @@
 -- =============================================================================
 
 -- 1. Configure auth settings (Site URL + redirect allow-list).
---    Replace the values below with your real domains (localhost is for dev).
+--    ⚠️ Replace https://YOUR-VERCEL-PROJECT.vercel.app with your real
+--    deployment URL (the one the site runs on). Without your production
+--    URL in this list, password-reset emails are generated but the link
+--    in them will not be accepted by Supabase.
 INSERT INTO auth.config (instance_id, site_url, additional_redirect_urls)
 VALUES (
   '00000000-0000-0000-0000-000000000000',
-  'http://localhost:3000',
+  'https://YOUR-VERCEL-PROJECT.vercel.app',
   ARRAY[
+    'https://YOUR-VERCEL-PROJECT.vercel.app/**',
     'http://localhost:3000/**',
     'http://127.0.0.1:3000/**'
   ]::text[]
