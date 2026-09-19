@@ -86,7 +86,7 @@ export const Navbar: React.FC = () => {
             {/* Logo */}
             <button onClick={() => go('home')} className="group flex items-center gap-3 cursor-pointer" aria-label="Brainchild Games home">
               <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border-2 border-ink bg-cream shadow-sticker-sm transition-transform duration-200 group-hover:-rotate-6 group-hover:scale-105">
-                <img src="/src/assets/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
+                <img src="/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
               </span>
               <span className="flex flex-col items-start leading-none">
                 <span className="font-display text-lg font-extrabold uppercase tracking-tight text-ink">

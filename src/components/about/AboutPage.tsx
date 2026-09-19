@@ -88,13 +88,13 @@ export const AboutPage: React.FC = () => {
             <div className="relative mx-auto max-w-sm">
               <div className="-rotate-2 rounded-[30px] border-2 border-ink bg-cream p-3 shadow-sticker transition-transform duration-300 hover:rotate-0">
                 <img
-                  src="/src/assets/images/art_studio.jpg"
+                  src="/images/art_studio.jpg"
                   alt="Inside the Brainchild studio"
                   className="aspect-[4/3] w-full rounded-[20px] border-2 border-ink/10 object-cover"
                 />
               </div>
               <div className="absolute -bottom-8 -right-4 w-32 rotate-6 rounded-3xl border-2 border-ink bg-cream p-2 shadow-sticker-sm">
-                <img src="/src/assets/images/mascot_pix.png" alt="Pix the mascot" className="w-full rounded-2xl" />
+                <img src="/images/mascot_pix.png" alt="Pix the mascot" className="w-full rounded-2xl" />
               </div>
               <span className="absolute -left-4 -top-5 -rotate-6 rounded-full border-2 border-ink bg-lime px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-ink shadow-sticker-sm animate-bob">
                 {aboutHero.teamBadge}

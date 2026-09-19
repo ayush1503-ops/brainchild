@@ -64,7 +64,7 @@ export const ContactPage: React.FC = () => {
             <Reveal delay={0.08}>
               <div className="relative rotate-2 rounded-[30px] border-2 border-ink bg-grape p-6 shadow-sticker transition-transform duration-300 hover:rotate-0">
                 <div className="rounded-[22px] border-2 border-ink bg-cream p-4">
-                  <img src="/src/assets/images/mascot_pix.png" alt="Pix ready to help" className="w-full rounded-[16px]" />
+                  <img src="/images/mascot_pix.png" alt="Pix ready to help" className="w-full rounded-[16px]" />
                 </div>
                 <div className="absolute -top-6 right-6 max-w-[200px] rotate-3 rounded-2xl border-2 border-ink bg-sun px-4 py-2.5 shadow-sticker-sm">
                   <p className="text-xs font-extrabold uppercase tracking-wide text-ink">Pix reads every message. Twice.</p>
