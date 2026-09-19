@@ -40,5 +40,11 @@
         }
       ]
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "VITE_SUPABASE_URL": "https://kxirdoacrphluervussu.supabase.co",
+      "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4aXJkb2FjcnBobHVlcnZ1c3N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NjcyMDksImV4cCI6MjEwNTA0MzIwOX0.c5o1bTXXBMyPigIWdc8NXkfJTq6LKUP402hAMoNctAg"
+    }
+  }
 }

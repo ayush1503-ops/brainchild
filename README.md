@@ -100,6 +100,20 @@ Project → Settings → Environment Variables (Production **and** Preview):
 
 **Frontend (build-time, embedded in the bundle)**
 
+`vercel.json` → `build.env` includes the public URL and anon key for the
+Brainchild Supabase project (`kxirdoacrphluervussu`), so Vercel builds have
+browser authentication configured. These are public browser credentials, not
+administrator credentials; keep Row Level Security enabled on exposed tables.
+If switching projects, update both values together. Local development still
+uses `.env.local` as described above.
+
+Redeploy after changing these values: Vite embeds them at build time. For
+password recovery, allow `https://<your-domain>/admin/reset-password` in
+Supabase **Authentication → URL Configuration → Redirect URLs**.
+
+Never commit `DATABASE_URL`, database passwords, or service-role/secret keys.
+Set those only in Vercel's environment settings (server-side, without `VITE_`).
+
 | Variable | Value |
 | --- | --- |
 | `VITE_SUPABASE_URL` | `https://<ref>.supabase.co` |
