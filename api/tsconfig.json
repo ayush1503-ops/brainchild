@@ -14,5 +14,7 @@
     "moduleDetection": "force",
     "noEmit": true
   },
-  "include": ["**/*.ts"]
+  "files": ["./[...path].ts"],
+  "include": ["**/*.ts"],
+  "exclude": ["../src", "../server", "../dist", "../node_modules"]
 }
