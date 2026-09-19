@@ -16,13 +16,18 @@
  *    nothing depends on the ephemeral function filesystem.
  *  - Cookies are same-origin (site + API share the Vercel domain), so the
  *    JWT/CSRF cookie flow works exactly like in development.
+ *
+ * Note: the handler is typed with plain Node `http` types instead of
+ * `@vercel/node` so this file has no dependencies outside the compiled server
+ * bundle, and `api/tsconfig.json` keeps its type-check program separate from
+ * the frontend tsconfig (which targets the browser, not Node).
  */
-import type { VercelApiHandler } from '@vercel/node';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import app from '../server/dist/index.js';
 import { closeDatabase, databaseHealth } from '../server/dist/db/index.js';
 
 /** Report a shallow health status on GET /api/health (used by uptime monitors). */
-function handleHealth(_req: Parameters<VercelApiHandler>[0], res: Parameters<VercelApiHandler>[1]): void {
+function handleHealth(_req: IncomingMessage, res: ServerResponse): void {
   void (async () => {
     let body: string;
     let status = 200;
@@ -57,7 +62,11 @@ process.on('SIGTERM', () => {
     .finally(() => process.exit(0));
 });
 
-const handler: VercelApiHandler = (req, res) => {
+/**
+ * Vercel's Node runtime invokes the default export with raw Node streams
+ * (IncomingMessage, ServerResponse) — exactly what `app(req, res)` expects.
+ */
+const handler = (req: IncomingMessage, res: ServerResponse): void => {
   // The Vercel runtime hands us raw Node streams; Express reads them directly.
   if (req.method === 'GET' && req.url === '/health') {
     handleHealth(req, res);
