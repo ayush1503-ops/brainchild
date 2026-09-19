@@ -39,6 +39,7 @@
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
+    "embedded-postgres": "17.10.0-beta.17",
     "nodemailer": "^6.9.16"
   },
   "devDependencies": {
@@ -53,7 +54,6 @@
     "@types/pg": "^8.23.1",
     "@types/sanitize-html": "^2.13.0",
     "drizzle-kit": "^0.31.10",
-    "embedded-postgres": "17.10.0-beta.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
