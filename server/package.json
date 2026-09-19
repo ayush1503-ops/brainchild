@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Brainchild Studio \u2014 secure API and admin/CMS backend",
+  "description": "Brainchild Studio — secure API and admin/CMS backend",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
@@ -50,6 +50,7 @@
     "@types/nodemailer": "^6.4.16",
     "@types/pg": "^8.23.1",
     "@types/sanitize-html": "^2.13.0",
+    "@vercel/node": "^13.0.1",
     "drizzle-kit": "^0.31.10",
     "embedded-postgres": "17.10.0-beta.17",
     "tsx": "^4.19.2",
