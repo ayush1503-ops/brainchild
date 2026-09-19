@@ -1,75 +1,86 @@
 -- =============================================================================
---  Enable password-reset emails + point reset links to your frontend
+--  Supabase Auth: confirm the admin account + promote it to SUPER_ADMIN
 -- -----------------------------------------------------------------------------
---  Run this in Supabase SQL Editor after 0001/0002 (apply_now.sql).
+--  Run this in Supabase SQL Editor after apply_now.sql (0001 + 0002).
 --
---  It:
---   • Ensures email/password sign-up is enabled (required for admin login)
---   • Sets the site URL to your Vite dev server for local testing
---   • Adds production URLs as allowed redirect targets
---   • Confirms your admin account (brainchildgamesin@gmail.com) automatically
---     so you don't have to verify the email before requesting a reset.
+--  ⚠️ READ THIS FIRST
+--  The admin console password reset does NOT use Supabase Auth. `/admin/login`
+--  checks `admin_users.password_hash` via the Express API, and
+--  `POST /api/auth/forgot-password` issues the reset token. Supabase Auth here
+--  is for the public site (player sign-up, OAuth, published-content RLS).
+--  To reset an ADMIN console password use:
+--      npm run admin:set-password --prefix server
+--  See supabase/README.md → "Admin password reset does not use Supabase Auth".
 --
---  NOTE: Supabase sends transactional emails (password reset, magic link)
---  out of the box with their default sender. You don't need to connect a
---  custom SMTP/Gmail account for this to work — Supabase handles delivery.
---  The reset email will arrive in your Gmail inbox (check Promotions/Spam).
+--  What this file deliberately does NOT do:
+--  There is no `auth.config` table. Site URL and the redirect allow-list are
+--  platform settings, not rows in your database — `supabase/auth` ships no
+--  `config` table in any of its migrations. Set them here instead:
+--      Dashboard → Authentication → URL Configuration
+--        Site URL        = https://YOUR-VERCEL-PROJECT.vercel.app
+--        Redirect URLs   = https://YOUR-VERCEL-PROJECT.vercel.app/**
+--                          http://localhost:3000/**
+--                          http://127.0.0.1:3000/**
+--  (or the equivalent `[auth]` block in supabase/config.toml for
+--  config-as-code). An `INSERT INTO auth.config` fails with
+--  `relation "auth.config" does not exist`.
+--
+--  Email delivery is a separate setting:
+--      Dashboard → Project Settings → Auth → SMTP
+--  Supabase's built-in email service works with no configuration. A custom SMTP
+--  host with bad credentials is the most common cause of the 500
+--  "Unable to process request" on POST /auth/v1/recover — see the
+--  troubleshooting section of supabase/README.md.
 -- =============================================================================
 
--- 1. Configure auth settings (Site URL + redirect allow-list).
---    ⚠️ Replace https://YOUR-VERCEL-PROJECT.vercel.app with your real
---    deployment URL (the one the site runs on). Without your production
---    URL in this list, password-reset emails are generated but the link
---    in them will not be accepted by Supabase.
-INSERT INTO auth.config (instance_id, site_url, additional_redirect_urls)
-VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  'https://YOUR-VERCEL-PROJECT.vercel.app',
-  ARRAY[
-    'https://YOUR-VERCEL-PROJECT.vercel.app/**',
-    'http://localhost:3000/**',
-    'http://127.0.0.1:3000/**'
-  ]::text[]
-)
-ON CONFLICT (instance_id) DO UPDATE SET
-  site_url = EXCLUDED.site_url,
-  additional_redirect_urls = EXCLUDED.additional_redirect_urls;
+BEGIN;
 
--- 2. Auto-confirm your admin email so password reset works immediately.
---    (Supabase won't send a reset email to an unconfirmed address by default.)
+-- 1. Auto-confirm the admin email so Supabase will issue recovery links for it
+--    without waiting for a verification click.
 UPDATE auth.users
 SET email_confirmed_at = COALESCE(email_confirmed_at, now()),
     confirmation_token = NULL,
     confirmation_sent_at = NULL,
-    recovery_token = NULL,
-    recovery_sent_at = NULL
-WHERE email = 'brainchildgamesin@gmail.com';
+    recovery_token       = NULL,
+    recovery_sent_at     = NULL
+WHERE lower(email) = 'brainchildgamesin@gmail.com';
 
--- 3. Make sure a profile row exists for your admin account (in case you
---    created the user in the dashboard before the trigger was attached).
+-- 2. Make sure a profile row exists for the admin account (covers the case
+--    where the user was created in the dashboard before the trigger existed).
 INSERT INTO profiles (id, display_name, email_verified)
 SELECT id, 'Brainchild Games', true
 FROM auth.users
-WHERE email = 'brainchildgamesin@gmail.com'
+WHERE lower(email) = 'brainchildgamesin@gmail.com'
 ON CONFLICT (id) DO UPDATE SET
   email_verified = true,
   updated_at     = now();
 
--- 4. Promote brainchildgamesin@gmail.com to SUPER_ADMIN in admin_users (primary studio owner)
+-- 3. Promote the account to SUPER_ADMIN in admin_users (primary studio owner).
 INSERT INTO admin_users (id, name, role, is_active)
 SELECT id, 'Brainchild Games', 'SUPER_ADMIN', true
-FROM auth.users WHERE email = 'brainchildgamesin@gmail.com'
+FROM auth.users
+WHERE lower(email) = 'brainchildgamesin@gmail.com'
 ON CONFLICT (id) DO UPDATE SET
-  role = 'SUPER_ADMIN',
-  is_active = true,
-  name = 'Brainchild Games',
+  role       = 'SUPER_ADMIN',
+  is_active  = true,
+  name       = 'Brainchild Games',
   updated_at = now();
 
--- Sanity check:
+COMMIT;
+
+-- --- Sanity checks ----------------------------------------------------------
+-- Zero rows here means the account was never created in THIS project.
 SELECT id, email, email_confirmed_at, last_sign_in_at
 FROM auth.users
-WHERE email = 'brainchildgamesin@gmail.com';
+WHERE lower(email) = 'brainchildgamesin@gmail.com';
 
--- Verify admin promotion
+-- Confirm the promotion.
 SELECT id, name, role, is_active FROM admin_users
-WHERE id IN (SELECT id FROM auth.users WHERE email = 'brainchildgamesin@gmail.com');
+WHERE id IN (SELECT id FROM auth.users WHERE lower(email) = 'brainchildgamesin@gmail.com');
+
+-- Duplicate rows are harmless for the recovery lookup (`findUser` uses .First()
+-- and the query lower-cases the address), but this shows you what is there.
+SELECT lower(email) AS email, count(*) AS rows
+FROM auth.users
+GROUP BY lower(email)
+HAVING count(*) > 1;

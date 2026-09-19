@@ -25,7 +25,7 @@ import {
 import { audit } from '../services/activity.js';
 import { loginLimiter, passwordResetLimiter } from '../middleware/security.js';
 import { emailSchema } from '../middleware/validate.js';
-import { passwordResetEmail, sendMail } from '../services/mailer.js';
+import { mailTransportReady, passwordResetEmail, sendMail } from '../services/mailer.js';
 import { logger } from '../utils/logger.js';
 import { permissionsForRole } from '../services/permissions.js';
 
@@ -406,8 +406,16 @@ router.post(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { email } = z.object({ email: emailSchema }).strict().parse(req.body);
 
+    // Mail readiness is a property of the deployment, not of the address, so it
+    // is computed before the lookup and included on *every* response path —
+    // including the unknown-address one. If the key only appeared for existing
+    // accounts, its presence would itself identify which emails have a studio
+    // account, defeating the anti-enumeration design of this endpoint.
+    const mailer = mailTransportReady();
     const genericResponse = {
       message: 'If that email belongs to a studio account, a reset link is on its way.',
+      emailDeliveryEnabled: mailer.ready,
+      ...(mailer.ready ? {} : { emailDeliveryReason: mailer.reason ?? 'unknown' }),
     };
 
     const [admin] = await db.select().from(adminUsers).where(findByEmail(email)).limit(1);
@@ -442,6 +450,17 @@ router.post(
     });
 
     logger.info('Password reset requested', { adminId: admin.id, delivered: delivery.delivered });
+
+    // The body can never reveal whether this address has an account, so a
+    // failed send is never surfaced as an error for it — it is logged instead.
+    if (!delivery.delivered) {
+      logger.error('Password reset email was not delivered', {
+        adminId: admin.id,
+        reason: delivery.reason,
+        mailerReason: mailer.reason,
+        transport: mailer.transport,
+      });
+    }
 
     res.json({
       ...genericResponse,

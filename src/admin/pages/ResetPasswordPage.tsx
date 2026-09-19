@@ -1,32 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { supabase } from '../../lib/supabase';
+import { ApiError, authApi } from '../utils/api';
 
 /**
- * Reset Password page — handles two flows:
+ * Reset Password — consumes the one-time token from the reset email.
  *
- *   1. Supabase recovery link flow (email link). When a user clicks the
- *      "Reset your password" link in the email from Gmail, Supabase appends
- *      ?access_token=...&refresh_token=...&expires_in=...&token_type=bearer&type=recovery
- *      to the URL. We detect this on mount and exchange the tokens for a
- *      session (supabase.auth.initialize does this automatically when
- *      detectSessionInUrl is true), then show the new-password form.
+ * The link produced by `POST /api/auth/forgot-password` looks like:
+ *   /admin/reset-password?token=<48-byte random token>
  *
- *   2. Old express-backend flow: ?token=XXX for a signed JWT from the local
- *      dev backend. Still supported so the existing backend keeps working if
- *      you use it in parallel.
+ * On submit we POST `{ token, newPassword }` to `/api/auth/reset-password`,
+ * which verifies the SHA-256 token hash, enforces the server password policy
+ * (12+ chars, a letter and a number — see `checkPasswordPolicy`), rotates the
+ * password in `admin_users` and revokes every existing session.
+ *
+ * Client-side checks below mirror that policy so the user gets feedback before
+ * a round trip, but the server remains the authority.
  */
+const MIN_PASSWORD_LENGTH = 12;
+
 export const ResetPasswordPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Legacy Express token (when coming from the old email link).
-  const legacyToken = searchParams.get('token') || '';
-  // Supabase recovery flow is detected automatically by the Supabase client
-  // (detectSessionInUrl: true). After the client boots, a recovery session
-  // exists if the URL had a valid access_token with type=recovery.
+  const token = searchParams.get('token') ?? '';
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,70 +33,31 @@ export const ResetPasswordPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // For Supabase flow, we must verify that a recovery session is present
-  // before allowing the user to set a new password.
-  const [supabaseReady, setSupabaseReady] = useState<boolean>(!!legacyToken);
-  const [supabaseChecking, setSupabaseChecking] = useState<boolean>(!legacyToken && !!supabase);
+  /** Missing or truncated tokens can never validate — say so up front. */
+  const hasToken = token.length >= 20;
 
-  useEffect(() => {
-    if (!supabase) {
-      setSupabaseReady(!!legacyToken);
-      setSupabaseChecking(false);
-      return;
-    }
-
-    // If there's no recovery-looking URL, nothing to initialize.
-    const hasRecoveryHash =
-      searchParams.get('type') === 'recovery' ||
-      searchParams.has('access_token') ||
-      window.location.hash.includes('access_token');
-
-    if (!hasRecoveryHash) {
-      setSupabaseReady(!!legacyToken);
-      setSupabaseChecking(false);
-      return;
-    }
-
-    // Give the Supabase client one tick to initialize the session from the
-    // URL fragment (it reads #access_token=... automatically on startup in
-    // our supabase.ts client).
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (!cancelled) {
-          const isRecovery =
-            data.session?.user !== null &&
-            // Supabase sets amr/recovery when the session came from a recovery link
-            (searchParams.get('type') === 'recovery' ||
-              window.location.hash.includes('type=recovery'));
-          setSupabaseReady(isRecovery || !!legacyToken);
-          if (!isRecovery && !legacyToken) {
-            setError('This reset link is invalid or has expired. Please request a new one.');
-          }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError('Unable to verify reset link. Please request a new one.');
-        }
-      } finally {
-        if (!cancelled) setSupabaseChecking(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [legacyToken, searchParams, supabase]);
+  const policyHint = useMemo(() => {
+    if (!newPassword) return null;
+    const problems: string[] = [];
+    if (newPassword.length < MIN_PASSWORD_LENGTH) problems.push(`at least ${MIN_PASSWORD_LENGTH} characters`);
+    if (!/[a-z]/i.test(newPassword)) problems.push('a letter');
+    if (!/[0-9]/.test(newPassword)) problems.push('a number');
+    return problems.length ? `Needs ${problems.join(', ')}.` : 'Looks good.';
+  }, [newPassword]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters');
+
+    if (!hasToken) {
+      setError('This reset link is invalid or has expired. Please request a new one.');
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwords do not match.');
       return;
     }
 
@@ -106,34 +65,22 @@ export const ResetPasswordPage: React.FC = () => {
     setError(null);
 
     try {
-      if (supabase && supabaseReady && !legacyToken) {
-        // Supabase recovery flow — updates the current user's password using
-        // the recovery session already established from the email link.
-        const { error: updateError } = await supabase.auth.updateUser({
-          password: newPassword,
-        });
-        if (updateError) throw updateError;
-        // Sign out the recovery session so the user logs in fresh.
-        await supabase.auth.signOut();
-      } else if (legacyToken) {
-        // Legacy Express backend flow — POST to the REST API.
-        const res = await fetch('/api/auth/reset-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ token: legacyToken, password: newPassword }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.message || data.error || 'Failed to reset password');
+      const result = await authApi.resetPassword(token, newPassword);
+      setIsSuccess(true);
+      if (result.message) setError(null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 429) {
+          setError('Too many attempts. Please wait a minute and try again.');
+        } else if (err.fields.length > 0) {
+          setError(err.fields.map((field) => field.message).join(' '));
+        } else {
+          // 400 invalid_reset_token ⇒ the link was used, tampered with, or expired.
+          setError(err.message || 'Failed to reset password. The link may be invalid or expired.');
         }
       } else {
-        throw new Error('No active reset session. Please request a new reset link.');
+        setError('Failed to reset password. The link may be invalid or expired.');
       }
-
-      setIsSuccess(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset password. The link may be invalid or expired.');
     } finally {
       setIsLoading(false);
     }
@@ -160,22 +107,21 @@ export const ResetPasswordPage: React.FC = () => {
             </p>
           </div>
 
-          {supabaseChecking ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm font-semibold text-inksoft">
-              <Loader2 className="animate-spin" size={18} /> Verifying reset link…
-            </div>
-          ) : error ? (
-            <div className="mb-4 flex items-center gap-2 rounded-xl border-2 border-coral bg-coral/10 px-4 py-3 text-sm font-semibold text-coral">
-              <AlertCircle size={16} />
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-2 rounded-xl border-2 border-coral bg-coral/10 px-4 py-3 text-sm font-semibold text-coral"
+            >
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
               {error}
             </div>
-          ) : null}
+          )}
 
           {isSuccess ? (
             <div className="space-y-4 text-center">
               <div className="flex items-center justify-center gap-2 rounded-xl border-2 border-moss bg-moss/10 px-4 py-3 text-sm font-semibold text-moss">
                 <CheckCircle2 size={18} />
-                Password reset successful!
+                Password reset successful! Every other device has been signed out.
               </div>
               <button
                 onClick={() => navigate('/admin/login')}
@@ -184,47 +130,63 @@ export const ResetPasswordPage: React.FC = () => {
                 Go to Sign In
               </button>
             </div>
-          ) : supabaseReady || legacyToken ? (
+          ) : hasToken ? (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-extrabold uppercase tracking-widest text-inksoft">
-                  New Password (min 8 chars)
+                <label htmlFor="new-password" className="text-[11px] font-extrabold uppercase tracking-widest text-inksoft">
+                  New Password (min {MIN_PASSWORD_LENGTH} chars)
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-inksoft" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-inksoft" aria-hidden="true" />
                   <input
+                    id="new-password"
                     type={showPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-3 pl-11 pr-11 text-sm font-semibold text-ink placeholder-inksoft/60 focus:border-grape focus:outline-none"
                     placeholder="••••••••"
+                    autoComplete="new-password"
+                    disabled={isLoading}
                     required
-                    minLength={8}
+                    minLength={MIN_PASSWORD_LENGTH}
+                    aria-describedby="password-policy"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-inksoft hover:text-ink cursor-pointer"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {policyHint && (
+                  <p
+                    id="password-policy"
+                    className={`mt-1 text-[11px] font-bold ${policyHint === 'Looks good.' ? 'text-moss' : 'text-inksoft'}`}
+                  >
+                    {policyHint}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-extrabold uppercase tracking-widest text-inksoft">
+                <label htmlFor="confirm-password" className="text-[11px] font-extrabold uppercase tracking-widest text-inksoft">
                   Confirm New Password
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-inksoft" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-inksoft" aria-hidden="true" />
                   <input
+                    id="confirm-password"
                     type={showPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-3 pl-11 text-sm font-semibold text-ink placeholder-inksoft/60 focus:border-grape focus:outline-none"
                     placeholder="••••••••"
+                    autoComplete="new-password"
+                    disabled={isLoading}
                     required
-                    minLength={8}
+                    minLength={MIN_PASSWORD_LENGTH}
                   />
                 </div>
               </div>
@@ -253,16 +215,23 @@ export const ResetPasswordPage: React.FC = () => {
               </div>
             </form>
           ) : (
-            !error && (
-              <div className="text-center pt-2">
-                <Link
-                  to="/admin/forgot-password"
-                  className="text-xs font-bold uppercase tracking-wider text-inksoft hover:text-ink"
-                >
-                  Request a new reset link
-                </Link>
+            <div className="space-y-4 text-center">
+              <div className="rounded-xl border-2 border-ink/15 bg-paper/60 px-4 py-3 text-sm font-semibold text-inksoft">
+                This page needs a reset link from your email. Request a new one and open the link it sends.
               </div>
-            )
+              <Link
+                to="/admin/forgot-password"
+                className="inline-flex items-center justify-center w-full rounded-xl border-2 border-ink bg-grape px-6 py-3 text-sm font-extrabold uppercase text-white shadow-sticker"
+              >
+                Request a new reset link
+              </Link>
+              <Link
+                to="/admin/login"
+                className="text-xs font-bold uppercase tracking-wider text-inksoft hover:text-ink"
+              >
+                Back to Sign In
+              </Link>
+            </div>
           )}
         </motion.div>
       </div>
