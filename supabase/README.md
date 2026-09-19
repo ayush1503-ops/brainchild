@@ -83,3 +83,35 @@ function SignupBox() {
 | `anon` (not logged in) | Read published games/news, open jobs, categories, public content blocks, media. Insert into `subscribers`, `contact_messages`. Call `increment_view`, `unsubscribe`. |
 | Authenticated player | All anon permissions. Read/update their own `profiles` row, manage their `wishlists`, upload their own avatar. |
 | Studio editor / admin / super-admin | Full CRUD on every table plus upload/delete in all storage buckets. |
+
+## Troubleshooting: "Unable to process request" on password reset
+
+If the admin **Forgot Password** page shows `Unable to process request`, the
+site itself worked — it reached Supabase Auth, and **Supabase's own database
+lookup of your user row errored** (that exact string is Supabase GoTrue's
+500 response from `POST /auth/v1/recover` when the `auth.users` query fails).
+
+It is **not** caused by the Vercel deployment, CSP, or this repo's API.
+
+Work around it and fix it in this order:
+
+1. **Reset the password from the dashboard (instant, no email needed):**
+   Supabase dashboard → **Authentication → Users** → your admin email →
+   **Reset password** (set a new one). You can then log in on the site with
+   the new password.
+2. **Check the user row** in **Authentication → Users**:
+   - Does the account exist in *this* project? The deployed site talks to the
+     project whose URL/key are in `vercel.json` → `build.env`
+     (`VITE_SUPABASE_URL`). If the account was created in a different
+     Supabase project, reset requests here will not find it.
+   - Is there more than one row for the same address (e.g. different letter
+     case)? Duplicate/conflicting rows can make the auth lookup fail —
+     delete the wrong one.
+   - Retry the form a couple of times: occasionally it is a transient
+     Supabase infrastructure error.
+3. **Check the real DB error:** Supabase dashboard → **Logs** (or
+   Authentication → Logs) — the 500 is logged server-side with the underlying
+   database error attached, which tells you exactly which row/column failed.
+4. **Make sure reset links can land on your site:** run
+   `0003_auth_email_setup.sql` (with your real Vercel URL substituted) so
+   `site_url` + the redirect allow-list include your production domain.

@@ -46,8 +46,18 @@ export const ForgotPasswordPage: React.FC = () => {
       if (resetError) {
         // Don't leak whether the email exists — same message either way to
         // prevent account enumeration. But surface real errors (network, etc.).
-        if (resetError.status === 429) {
+        const status = resetError.status;
+        if (status === 429) {
           setError('Too many reset attempts. Please wait a minute and try again.');
+        } else if (status && status >= 500) {
+          // Supabase's auth service failed internally (e.g. "Unable to
+          // process request" — its user lookup errored). Nothing is wrong
+          // with this site; the fix is on the Supabase side.
+          setError(
+            'Supabase hit an internal error while sending the reset email' +
+              (resetError.message ? ` (${resetError.message})` : '') +
+              '. Please try again in a minute. If it keeps happening, you can reset your password directly in the Supabase dashboard: Authentication → Users → your email → “Reset password” — then log in here with the new password.'
+          );
         } else {
           setError(resetError.message || 'Failed to send reset email');
         }
