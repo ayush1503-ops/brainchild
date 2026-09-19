@@ -118,7 +118,7 @@ export const ForgotPasswordPage: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-3 pl-11 text-sm font-semibold text-ink placeholder-inksoft/60 focus:border-grape focus:outline-none"
-                    placeholder="you@brainchild.games"
+                    placeholder="brainchildgamesin@gmail.com"
                     required
                   />
                 </div>

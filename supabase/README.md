@@ -28,11 +28,19 @@ If you use the Supabase CLI you can instead run `supabase db push`.
 
 ## 3. Create your first admin
 
-1. In **Authentication → Users**, click *Add user* and create yourself with a
-   real email/password.
-2. Back in the SQL Editor, promote yourself to SUPER_ADMIN:
+Primary studio admin `brainchildgamesin@gmail.com` is always valid as SUPER_ADMIN (auto-promoted by migrations).
+
+1. In **Authentication → Users**, click *Add user* and create `brainchildgamesin@gmail.com` with a strong password (or your own email).
+2. Back in the SQL Editor, promote yourself to SUPER_ADMIN (if you used a different email, or to ensure primary admin):
 
    ```sql
+   -- Primary admin (always valid)
+   INSERT INTO admin_users (id, name, role, is_active)
+   SELECT id, 'Brainchild Games', 'SUPER_ADMIN', true
+   FROM auth.users WHERE email = 'brainchildgamesin@gmail.com'
+   ON CONFLICT (id) DO UPDATE SET role = 'SUPER_ADMIN', is_active = true;
+
+   -- Additional admin (example)
    INSERT INTO admin_users (id, name, role, is_active)
    SELECT id, 'Studio Admin', 'SUPER_ADMIN', true
    FROM auth.users WHERE email = 'you@brainchild.games';

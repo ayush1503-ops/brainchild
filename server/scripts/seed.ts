@@ -106,7 +106,10 @@ async function main() {
 
   /* ------------------------------ studio team ----------------------------- */
 
-  const ownerEmail = (process.env.ADMIN_EMAIL || 'admin@brainchild.games').toLowerCase();
+  const PRIMARY_ADMIN_EMAIL = 'brainchildgamesin@gmail.com';
+  const PRIMARY_ADMIN_NAME = 'Brainchild Games';
+
+  const ownerEmail = (process.env.ADMIN_EMAIL || PRIMARY_ADMIN_EMAIL).toLowerCase();
   let ownerPassword = process.env.ADMIN_PASSWORD;
   if (!ownerPassword) {
     if (isProduction) throw new Error('ADMIN_PASSWORD must be set when seeding production.');
@@ -143,6 +146,41 @@ async function main() {
           .returning({ id: adminUsers.id, email: adminUsers.email })
       )[0];
   console.log(`   ✓ Studio owner      ${owner.email}${existingOwner ? ' (exists, role ensured)' : ''}`);
+
+  // Always ensure the primary studio account brainchildgamesin@gmail.com exists as SUPER_ADMIN
+  if (ownerEmail !== PRIMARY_ADMIN_EMAIL) {
+    const [existingPrimary] = await db
+      .select({ id: adminUsers.id, email: adminUsers.email })
+      .from(adminUsers)
+      .where(sql`lower(${adminUsers.email}) = ${PRIMARY_ADMIN_EMAIL}`)
+      .limit(1);
+
+    if (existingPrimary) {
+      await db
+        .update(adminUsers)
+        .set({ role: 'SUPER_ADMIN', isActive: true, name: PRIMARY_ADMIN_NAME })
+        .where(eq(adminUsers.id, existingPrimary.id));
+      console.log(`   ✓ Primary admin     ${PRIMARY_ADMIN_EMAIL} (exists, role ensured SUPER_ADMIN)`);
+    } else {
+      const primaryPassword = process.env.BRAINCHILD_ADMIN_PASSWORD || ownerPassword;
+      await db.insert(adminUsers).values({
+        email: PRIMARY_ADMIN_EMAIL,
+        name: PRIMARY_ADMIN_NAME,
+        role: 'SUPER_ADMIN',
+        passwordHash: await hashPassword(primaryPassword),
+        passwordChangedAt: new Date(),
+      });
+      console.log(`   ✓ Primary admin     ${PRIMARY_ADMIN_EMAIL} (created as SUPER_ADMIN)`);
+    }
+  } else {
+    // Owner is already the primary admin, ensure name is set correctly if not custom
+    if ((process.env.ADMIN_NAME || '').trim() === '' || process.env.ADMIN_NAME === 'Julian Vance') {
+      await db
+        .update(adminUsers)
+        .set({ name: PRIMARY_ADMIN_NAME })
+        .where(eq(adminUsers.id, owner.id));
+    }
+  }
 
   if (!isProduction) {
     for (const member of [
@@ -445,9 +483,15 @@ async function main() {
   if (!isProduction) {
     console.log('   Sign in at  /admin/login');
     console.log(`   Owner       ${ownerEmail} / ${ownerPassword}`);
+    if (ownerEmail !== PRIMARY_ADMIN_EMAIL) {
+      console.log(`   Primary     ${PRIMARY_ADMIN_EMAIL} / ${process.env.BRAINCHILD_ADMIN_PASSWORD || ownerPassword}`);
+    }
     console.log(`   Manager     manager@brainchild.games / ${DEV_PASSWORD}`);
     console.log(`   Editor      editor@brainchild.games / ${DEV_PASSWORD}`);
+    console.log('\n   Primary admin brainchildgamesin@gmail.com is always valid SUPER_ADMIN');
     console.log('\n   ⚠  Demo credentials — change them (Team → Set password) before going live.\n');
+  } else {
+    console.log(`   Primary admin ${PRIMARY_ADMIN_EMAIL} ensured as SUPER_ADMIN`);
   }
 }
 

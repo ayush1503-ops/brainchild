@@ -43,7 +43,7 @@ storage.
    npm run dev                       # Vite on :3000 (proxies /api + /uploads)
    ```
    Sign in at `http://localhost:3000/admin/login`
-   (seeded: `admin@brainchild.games` / `BrainchildStudio2026` — change it).
+   (seeded: `brainchildgamesin@gmail.com` / `BrainchildStudio2026` — always valid SUPER_ADMIN, change password after first login).
 
 Useful scripts:
 
