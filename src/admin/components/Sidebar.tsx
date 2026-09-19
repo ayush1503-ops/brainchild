@@ -44,14 +44,14 @@ export const Sidebar: React.FC<{ isCollapsed?: boolean; onToggle?: () => void }>
           {!isCollapsed && (
             <Link to="/admin" className="flex items-center gap-2" aria-label="Brainchild Admin">
               <div className="grid h-8 w-8 place-items-center overflow-hidden rounded-xl border-2 border-ink bg-cream shadow-sticker-sm">
-                <img src="/src/assets/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
+                <img src="/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
               </div>
               <span className="font-display text-lg font-extrabold uppercase tracking-tight text-ink">Admin</span>
             </Link>
           )}
           {isCollapsed && (
             <Link to="/admin" className="grid h-8 w-8 place-items-center rounded-xl border-2 border-ink bg-cream shadow-sticker-sm mx-auto" aria-label="Brainchild Admin">
-              <img src="/src/assets/images/mascot_pix.png" alt="" className="h-6 w-6 object-cover" />
+              <img src="/images/mascot_pix.png" alt="" className="h-6 w-6 object-cover" />
             </Link>
           )}
           {!isCollapsed && onToggle && (
@@ -92,7 +92,7 @@ export const Sidebar: React.FC<{ isCollapsed?: boolean; onToggle?: () => void }>
               <div className="px-3 py-2 space-y-1">
                 <div className="flex items-center gap-2 text-sm">
                   <div className="grid h-8 w-8 place-items-center overflow-hidden rounded-xl border-2 border-ink bg-cream">
-                    <img src="/src/assets/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
+                    <img src="/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-ink truncate">{user?.name || 'Admin'}</p>

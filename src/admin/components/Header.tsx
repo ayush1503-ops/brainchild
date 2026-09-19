@@ -40,7 +40,7 @@ export const Header: React.FC<{
           <div className="relative">
             <button className="flex items-center gap-2 rounded-full border-2 border-ink/15 bg-grape px-3 py-1.5 text-sm font-semibold text-white transition-all hover:border-ink cursor-pointer" aria-label="User menu">
               <div className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 border-ink bg-cream">
-                <img src="/src/assets/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
+                <img src="/images/mascot_pix.png" alt="" className="h-full w-full object-cover" />
               </div>
               <span className="hidden sm:block">{user?.name || 'Admin'}</span>
               <ChevronDown size={14} className="hidden sm:block" />

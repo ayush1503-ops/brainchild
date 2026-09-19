@@ -25,7 +25,7 @@ export const FeaturedGameSection: React.FC = () => {
           {/* Artwork with gentle parallax */}
           <motion.img
             style={{ y }}
-            src="/src/assets/images/art_week_wide.jpg"
+            src="/images/art_week_wide.jpg"
             alt="The connected worlds of Brainchild Games"
             className="absolute inset-0 h-[112%] w-full object-cover"
           />

@@ -143,7 +143,7 @@ export const ResetPasswordPage: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="relative w-full max-w-md">
         <div className="absolute -top-8 left-1/2 -translate-x-1/2">
-          <img src="/src/assets/images/mascot_pix.png" alt="Pix" className="h-24 w-24 object-cover rounded-2xl border-2 border-ink shadow-lift" />
+          <img src="/images/mascot_pix.png" alt="Pix" className="h-24 w-24 object-cover rounded-2xl border-2 border-ink shadow-lift" />
         </div>
 
         <motion.div
