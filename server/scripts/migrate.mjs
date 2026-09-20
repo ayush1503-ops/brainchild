@@ -83,7 +83,21 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error('\n  Migration failed:', error.message, '\n');
+    // pg surfaces socket failures (e.g. ECONNREFUSED when the dev DB is not
+    // running) with an empty `message`, which used to print as
+    // "Migration failed: " — a dead end. Fall back to the error code/cause
+    // and point at the fix.
+    const detail =
+      error?.message ||
+      error?.code ||
+      error?.cause?.message ||
+      (error instanceof Error ? error.constructor.name : String(error));
+    console.error(`\n  Migration failed: ${detail}\n`);
+    if (error?.code === 'ECONNREFUSED' || /ECONNREFUSED/.test(String(error?.stack ?? ''))) {
+      console.error(
+        '  Could not reach the database. For the embedded dev DB run: npm run db:up --prefix server\n',
+      );
+    }
     process.exitCode = 1;
   })
   .finally(async () => {
