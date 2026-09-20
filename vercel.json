@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build:server && vite build",
+  "buildCommand": "npm run build:server && npm run db:migrate:deploy --prefix server && vite build",
   "outputDirectory": "dist",
   "functions": {
     "api/[...path].ts": {

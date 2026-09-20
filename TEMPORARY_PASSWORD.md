@@ -64,6 +64,16 @@ npm run dev                          # site on :3000
 
 **Existing / deployed database (Neon, Supabase Postgres, RDS, Vercel)**
 
+The Vercel build runs `db:migrate:deploy` before `vite build`, so **the next
+deploy applies migration 0003 automatically** — merging this change and letting
+Vercel deploy is enough to make the temporary password work on the deployed
+site. Nothing to run by hand.
+
+If you would rather do it without deploying, or the build logs
+`DATABASE_URL is not set for this build — skipping migrations` (the variable is
+scoped to Runtime only in Vercel), run one of these against the production
+database:
+
 ```bash
 DATABASE_URL="postgresql://…" npm run db:migrate --prefix server
 # 0003 is applied once and recorded in schema_migrations
@@ -72,6 +82,10 @@ DATABASE_URL="postgresql://…" npm run db:migrate --prefix server
 DATABASE_URL="postgresql://…" TEMPORARY_ADMIN_PASSWORD="Brainchild@2026" \
   npm run admin:set-password --prefix server
 ```
+
+If the deployed build line fails, make sure `DATABASE_URL` is enabled for the
+**Build** environment too (Vercel → Settings → Environment Variables →
+environments).
 
 Also set `ADMIN_PASSWORD=Brainchild@2026` (or your own value) in
 Vercel → Settings → Environment Variables if the seed should keep creating the
@@ -94,6 +108,21 @@ The temporary password keeps working until *something* changes
 
 Migration 0003 runs **once** per database: after it is recorded in
 `schema_migrations`, later deploys will not overwrite a password you rotated.
+
+## Sign-in errors tell you the truth
+
+The console used to answer every failed sign-in with *“Invalid email or
+password”*, even when the real cause was a rate limit, a lockout, a missing
+cookie or an unreachable API — the page read `error.response.data.error`, which
+the API client never sets. It now shows what actually happened:
+
+| What you see | What it means |
+| --- | --- |
+| *Email or password is incorrect.* | The credentials really are wrong (case-sensitive). Use **Forgot password?** if you no longer remember it |
+| *Too many sign-in attempts…* | 10 failed attempts in 15 minutes for this IP + email. Wait, or restart the API locally to clear the counter |
+| *This account is locked for N more minute(s)* | 5 failed attempts on the account — another admin can unlock it in Team → Unlock |
+| *Cannot reach the studio server* | The browser never got an answer: the API is down/restarting, or the deployment's `DATABASE_URL` is wrong |
+| *Security token missing or expired* | Cookies are blocked for the console (reload; check the browser's cookie settings) |
 
 ## How you can tell it is still in use
 

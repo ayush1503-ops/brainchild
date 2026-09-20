@@ -91,6 +91,15 @@ DATABASE_URL="postgresql://..." ADMIN_EMAIL="you@example.com" \
   npm run db:setup --prefix server
 ```
 
+From then on every deploy keeps the schema current by itself: the Vercel build
+runs `npm run db:migrate:deploy --prefix server`, which applies any pending
+migration before the site is built (that is how the temporary admin password in
+migration 0003 reaches production without a manual step). It never fails the
+build — if `DATABASE_URL` is not exposed to the build environment or the
+database is unreachable, it logs and continues, and you can still run
+`npm run db:migrate --prefix server` by hand. Set
+`SKIP_DB_MIGRATE_ON_BUILD=true` to turn it off.
+
 ### 2. Configure Supabase (already in your stack)
 
 1. If you haven't set the project up yet, follow `supabase/README.md`
@@ -230,6 +239,13 @@ build). If you're on Pro or Enterprise and need longer-running requests
   database.
 - **Function timeout** is set to 300 s (the platform maximum), which covers
   even large backup exports.
+- **Migrations**: `buildCommand` runs `db:migrate:deploy` before `vite build`,
+  so a deployment can never sit in front of an out-of-date database. Migration
+  0003 (the temporary admin password) reaches production this way. The step is
+  non-fatal by design: missing `DATABASE_URL` or an unreachable database logs a
+  warning and the build continues. `SKIP_DB_MIGRATE_ON_BUILD=true` disables it.
+  Migrations are recorded in `schema_migrations`, so each one applies once and
+  never overwrites a password you rotated afterwards.
 
 ## Security model (short version)
 

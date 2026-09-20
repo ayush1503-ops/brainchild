@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
 import { notify } from '../utils/toast';
+import { describeLoginError, type LoginErrorInfo } from '../utils/login-error';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -21,7 +22,7 @@ export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoginErrorInfo | null>(null);
 
   const from = (location.state as { from?: Location })?.from?.pathname || '/admin';
 
@@ -40,8 +41,10 @@ export const LoginPage: React.FC = () => {
       await login(data.email, data.password);
       notify('Welcome back!', 'success');
       navigate(from, { replace: true });
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid email or password');
+    } catch (err) {
+      // Show what actually went wrong (wrong password, rate limit, lockout,
+      // unreachable API) instead of always blaming the credentials.
+      setError(describeLoginError(err));
     } finally {
       setIsLoading(false);
     }
@@ -73,10 +76,16 @@ export const LoginPage: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 flex items-center gap-2 rounded-xl border-2 border-coral bg-coral/10 px-4 py-3 text-sm font-semibold text-coral"
+              role="alert"
+              className="mb-6 flex items-start gap-2 rounded-xl border-2 border-coral bg-coral/10 px-4 py-3 text-sm font-semibold text-coral"
             >
-              <AlertCircle size={16} />
-              {error}
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span>
+                {error.message}
+                {error.hint && (
+                  <span className="mt-1 block text-xs font-medium text-coral/80">{error.hint}</span>
+                )}
+              </span>
             </motion.div>
           )}
 
