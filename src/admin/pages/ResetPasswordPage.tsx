@@ -4,7 +4,7 @@ import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2, MailCheck } from
 import { motion } from 'motion/react';
 import { ApiError, authApi } from '../utils/api';
 import { useSupabaseAuth } from '../../context/SupabaseAuthContext';
-import { describeAuthCallbackError } from '../../lib/supabase';
+import { describeAuthCallbackError, supabase } from '../../lib/supabase';
 
 /**
  * Reset Password — the landing page of the reset email.
@@ -103,6 +103,14 @@ export const ResetPasswordPage: React.FC = () => {
     setError(null);
 
     try {
+      if (supabase && (proof.kind === 'supabase' || session)) {
+        try {
+          await supabase.auth.updateUser({ password: newPassword });
+        } catch (supaErr) {
+          console.warn('[Supabase Auth] updateUser notice:', supaErr);
+        }
+      }
+
       await authApi.resetPassword(
         proof.kind === 'token' ? { token: proof.token } : { supabaseAccessToken: proof.accessToken },
         newPassword

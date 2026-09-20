@@ -30,7 +30,7 @@ export function securityHeaders() {
     'default-src': ["'self'"],
     'base-uri': ["'self'"],
     'object-src': ["'none'"],
-    'frame-ancestors': ["'none'"],
+    'frame-ancestors': dev ? ['*'] : ["'none'"],
     'form-action': ["'self'"],
     'script-src': ["'self'"],
     'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
@@ -55,12 +55,12 @@ export function securityHeaders() {
       ),
     },
     crossOriginResourcePolicy: { policy: 'same-site' },
-    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginOpenerPolicy: dev ? false : { policy: 'same-origin' },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     hsts: config.isProduction
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
-    frameguard: { action: 'deny' },
+    frameguard: dev ? false : { action: 'deny' },
     noSniff: true,
     xssFilter: true,
     hidePoweredBy: true,

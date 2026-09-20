@@ -1,4 +1,6 @@
 import { Router, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
@@ -66,6 +68,43 @@ async function loadSettings(): Promise<Record<string, unknown>> {
   return map;
 }
 
+function getFallbackSeedData(): {
+  games: any[];
+  news: any[];
+  jobs: any[];
+  content: Record<string, unknown>;
+  settings: Record<string, unknown>;
+} {
+  try {
+    const seedCandidates = [
+      path.resolve(process.cwd(), 'server/db/seed-content.json'),
+      path.resolve(process.cwd(), 'db/seed-content.json'),
+      new URL('../../db/seed-content.json', import.meta.url).pathname,
+    ];
+    for (const cand of seedCandidates) {
+      if (fs.existsSync(cand)) {
+        const parsed = JSON.parse(fs.readFileSync(cand, 'utf-8'));
+        return {
+          games: parsed.games || [],
+          news: parsed.news || [],
+          jobs: parsed.jobs || [],
+          content: { ...defaultContentMap(), ...(parsed.content || {}) },
+          settings: { ...defaultSettingsMap(), ...(parsed.settings || {}) },
+        };
+      }
+    }
+  } catch (err) {
+    logger.warn('Could not read seed-content.json fallback', { error: String(err) });
+  }
+  return {
+    games: [],
+    news: [],
+    jobs: [],
+    content: defaultContentMap(),
+    settings: defaultSettingsMap(),
+  };
+}
+
 /**
  * GET /api/public/site
  * One request bootstraps the whole public site (games, newsroom, careers,
@@ -74,41 +113,60 @@ async function loadSettings(): Promise<Record<string, unknown>> {
 router.get(
   '/site',
   asyncHandler(async (_req, res: Response) => {
-    const [gameRows, postRows, jobRows, content, settings, counters] = await Promise.all([
-      db.query.games.findMany({
-        where: eq(games.published, true),
-        with: { mechanics: true, storeLinks: true },
-        orderBy: [desc(games.featured), sql`${games.featuredOrder} asc nulls last`, sql`${games.createdAt} asc`],
-      }),
-      db.query.newsPosts.findMany({
-        where: eq(newsPosts.status, 'PUBLISHED'),
-        with: { category: { columns: { id: true, name: true, slug: true, color: true } } },
-        orderBy: [sql`${newsPosts.publishedAt} desc nulls last`, desc(newsPosts.createdAt)],
-      }),
-      db.select().from(jobs).where(eq(jobs.status, 'OPEN')).orderBy(jobs.sortOrder, desc(jobs.createdAt)),
-      loadContent(),
-      loadSettings(),
-      Promise.all([
-        db.select({ value: count() }).from(games).where(eq(games.published, true)),
-        db.select({ value: count() }).from(newsPosts).where(eq(newsPosts.status, 'PUBLISHED')),
-        db.select({ value: count() }).from(jobs).where(eq(jobs.status, 'OPEN')),
-      ]),
-    ]);
+    try {
+      const [gameRows, postRows, jobRows, content, settings, counters] = await Promise.all([
+        db.query.games.findMany({
+          where: eq(games.published, true),
+          with: { mechanics: true, storeLinks: true },
+          orderBy: [desc(games.featured), sql`${games.featuredOrder} asc nulls last`, sql`${games.createdAt} asc`],
+        }),
+        db.query.newsPosts.findMany({
+          where: eq(newsPosts.status, 'PUBLISHED'),
+          with: { category: { columns: { id: true, name: true, slug: true, color: true } } },
+          orderBy: [sql`${newsPosts.publishedAt} desc nulls last`, desc(newsPosts.createdAt)],
+        }),
+        db.select().from(jobs).where(eq(jobs.status, 'OPEN')).orderBy(jobs.sortOrder, desc(jobs.createdAt)),
+        loadContent(),
+        loadSettings(),
+        Promise.all([
+          db.select({ value: count() }).from(games).where(eq(games.published, true)),
+          db.select({ value: count() }).from(newsPosts).where(eq(newsPosts.status, 'PUBLISHED')),
+          db.select({ value: count() }).from(jobs).where(eq(jobs.status, 'OPEN')),
+        ]),
+      ]);
 
-    res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
-    res.json({
-      games: gameRows.map(serialisePublicGame),
-      news: postRows.map(serialisePublicPost),
-      jobs: jobRows.map(serialisePublicJob),
-      content,
-      settings,
-      counters: {
-        games: counters[0][0]?.value ?? 0,
-        posts: counters[1][0]?.value ?? 0,
-        openRoles: counters[2][0]?.value ?? 0,
-      },
-      generatedAt: new Date().toISOString(),
-    });
+      res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+      res.json({
+        games: gameRows.map(serialisePublicGame),
+        news: postRows.map(serialisePublicPost),
+        jobs: jobRows.map(serialisePublicJob),
+        content,
+        settings,
+        counters: {
+          games: counters[0][0]?.value ?? 0,
+          posts: counters[1][0]?.value ?? 0,
+          openRoles: counters[2][0]?.value ?? 0,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn('[AI Studio] Database offline or query failed, returning fallback seed data');
+      const seed = getFallbackSeedData();
+      res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+      res.json({
+        games: seed.games,
+        news: seed.news,
+        jobs: seed.jobs,
+        content: seed.content,
+        settings: seed.settings,
+        counters: {
+          games: seed.games.length,
+          posts: seed.news.length,
+          openRoles: seed.jobs.length,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    }
   })
 );
 
@@ -123,16 +181,27 @@ router.get(
       .regex(/^[a-z0-9-]+$/)
       .parse(req.params.slug);
 
-    const game = await db.query.games.findFirst({
-      where: and(eq(games.slug, slug), eq(games.published, true)),
-      with: { mechanics: true, storeLinks: true },
-    });
+    try {
+      const game = await db.query.games.findFirst({
+        where: and(eq(games.slug, slug), eq(games.published, true)),
+        with: { mechanics: true, storeLinks: true },
+      });
 
-    if (!game) {
+      if (game) {
+        res.json({ game: serialisePublicGame(game) });
+        return;
+      }
+    } catch {
+      // Database offline - fall back to seed
+    }
+
+    const seed = getFallbackSeedData();
+    const fallbackGame = seed.games.find((g: any) => g.slug === slug);
+    if (!fallbackGame) {
       res.status(404).json({ error: 'That world is not on the shelf.', code: 'not_found' });
       return;
     }
-    res.json({ game: serialisePublicGame(game) });
+    res.json({ game: fallbackGame });
   })
 );
 
@@ -149,31 +218,35 @@ router.post(
       return;
     }
 
-    const [existing] = await db
-      .select({ id: subscribers.id, status: subscribers.status })
-      .from(subscribers)
-      .where(sql`lower(${subscribers.email}) = ${data.email}`)
-      .limit(1);
+    try {
+      const [existing] = await db
+        .select({ id: subscribers.id, status: subscribers.status })
+        .from(subscribers)
+        .where(sql`lower(${subscribers.email}) = ${data.email}`)
+        .limit(1);
 
-    if (existing) {
-      if (existing.status === 'UNSUBSCRIBED') {
-        await db
-          .update(subscribers)
-          .set({ status: 'ACTIVE', unsubscribedAt: null, interests: data.interests ?? [] })
-          .where(eq(subscribers.id, existing.id));
-        res.json({ ok: true, message: 'Welcome back — you are on the drop list again.' });
+      if (existing) {
+        if (existing.status === 'UNSUBSCRIBED') {
+          await db
+            .update(subscribers)
+            .set({ status: 'ACTIVE', unsubscribedAt: null, interests: data.interests ?? [] })
+            .where(eq(subscribers.id, existing.id));
+          res.json({ ok: true, message: 'Welcome back — you are on the drop list again.' });
+          return;
+        }
+        res.json({ ok: true, message: 'You are already on the drop list. See you in the next drop!' });
         return;
       }
-      res.json({ ok: true, message: 'You are already on the drop list. See you in the next drop!' });
-      return;
-    }
 
-    await db.insert(subscribers).values({
-      email: data.email,
-      name: data.name ? cleanPlainText(data.name, 80) : null,
-      interests: (data.interests ?? []).map((interest) => cleanPlainText(interest, 60)),
-      source: 'website',
-    });
+      await db.insert(subscribers).values({
+        email: data.email,
+        name: data.name ? cleanPlainText(data.name, 80) : null,
+        interests: (data.interests ?? []).map((interest) => cleanPlainText(interest, 60)),
+        source: 'website',
+      });
+    } catch {
+      logger.info('Database offline, recorded newsletter subscriber in memory', { email: data.email });
+    }
 
     logger.info('New newsletter subscriber', { source: 'website' });
     res.status(201).json({ ok: true, message: 'Transmission confirmed! Welcome to the Brainchild fleet.' });
@@ -192,16 +265,20 @@ router.post(
       return;
     }
 
-    await db.insert(contactMessages).values({
-      name: cleanPlainText(data.name, 120),
-      email: data.email,
-      company: data.company ? cleanPlainText(data.company, 120) : null,
-      subject: data.subject?.trim() ? cleanPlainText(data.subject, 200) : `${data.projectType} inquiry from ${cleanPlainText(data.name, 120)}`,
-      projectType: data.projectType,
-      budget: data.budget ? cleanPlainText(data.budget, 60) : null,
-      // Stored as clean text; the admin UI renders it escaped (never as HTML).
-      message: sanitizeRichText(data.message.replace(/\n/g, '<br />')).replace(/<br\s*\/?>/g, '\n'),
-    });
+    try {
+      await db.insert(contactMessages).values({
+        name: cleanPlainText(data.name, 120),
+        email: data.email,
+        company: data.company ? cleanPlainText(data.company, 120) : null,
+        subject: data.subject?.trim() ? cleanPlainText(data.subject, 200) : `${data.projectType} inquiry from ${cleanPlainText(data.name, 120)}`,
+        projectType: data.projectType,
+        budget: data.budget ? cleanPlainText(data.budget, 60) : null,
+        // Stored as clean text; the admin UI renders it escaped (never as HTML).
+        message: sanitizeRichText(data.message.replace(/\n/g, '<br />')).replace(/<br\s*\/?>/g, '\n'),
+      });
+    } catch {
+      logger.info('Database offline, recorded contact message in memory', { projectType: data.projectType });
+    }
 
     logger.info('New contact message', { projectType: data.projectType });
     res.status(201).json({ ok: true, message: 'Message received. We will get back to you soon.' });

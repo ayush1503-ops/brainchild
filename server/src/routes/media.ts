@@ -70,7 +70,7 @@ router.post(
   '/upload',
   requirePermission('media:upload'),
   uploadLimiter,
-  upload.array('images', 12),
+  upload.array('images', 12) as any,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
     if (!files.length) throw new AppError(400, 'Choose at least one image to upload.', 'no_files');

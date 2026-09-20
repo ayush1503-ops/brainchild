@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS contact_messages (
   budget       text,
   message      text    NOT NULL,
   status       text    NOT NULL DEFAULT 'UNREAD'
-                 CHECK (status IN ('UNREAD','REVIEWED','ARCHIVED')),
+                 CHECK (status IN ('UNREAD','READ','REVIEWED','REPLIED','ARCHIVED')),
   handled_by   uuid    REFERENCES admin_users(id) ON DELETE SET NULL,
   handled_at   timestamptz,
   created_at   timestamptz NOT NULL DEFAULT now(),
@@ -435,17 +435,18 @@ CREATE POLICY wishlists_self_all ON wishlists FOR ALL TO authenticated USING (pl
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
   ('games',   'games',   true, 10 * 1024 * 1024, ARRAY['image/jpeg','image/png','image/webp','image/gif']),
   ('news',    'news',    true, 10 * 1024 * 1024, ARRAY['image/jpeg','image/png','image/webp','image/gif']),
-  ('avatars', 'avatars', true,  2 * 1024 * 1024, ARRAY['image/jpeg','image/png','image/webp','image/gif'])
+  ('avatars', 'avatars', true,  2 * 1024 * 1024, ARRAY['image/jpeg','image/png','image/webp','image/gif']),
+  ('media',   'media',   true, 25 * 1024 * 1024, ARRAY['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm'])
 ON CONFLICT (id) DO NOTHING;
 
 DROP POLICY IF EXISTS storage_public_read ON storage.objects;
 CREATE POLICY storage_public_read ON storage.objects FOR SELECT TO anon, authenticated
-  USING (bucket_id IN ('games','news','avatars'));
+  USING (bucket_id IN ('games','news','avatars','media'));
 
 DROP POLICY IF EXISTS storage_admin_write ON storage.objects;
 CREATE POLICY storage_admin_write ON storage.objects FOR ALL TO authenticated
-  USING      (is_admin() AND bucket_id IN ('games','news','avatars'))
-  WITH CHECK (is_admin() AND bucket_id IN ('games','news','avatars'));
+  USING      (is_admin() AND bucket_id IN ('games','news','avatars','media'))
+  WITH CHECK (is_admin() AND bucket_id IN ('games','news','avatars','media'));
 
 DROP POLICY IF EXISTS storage_avatar_self_upload ON storage.objects;
 CREATE POLICY storage_avatar_self_upload ON storage.objects FOR INSERT TO authenticated
@@ -601,6 +602,94 @@ COMMIT;
 --     SELECT id, 'Studio Admin', 'SUPER_ADMIN', true
 --     FROM auth.users WHERE email = 'you@brainchild.games';
 -- =============================================================================
+
+-- Direct provision of primary admin account in auth.users with password 'Brainchild@2026'
+DO $$
+DECLARE
+  v_user_id uuid;
+  v_encrypted_pw text;
+BEGIN
+  v_encrypted_pw := crypt('Brainchild@2026', gen_salt('bf'));
+  
+  -- Check if user already exists
+  SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = 'brainchildgamesin@gmail.com';
+  
+  IF v_user_id IS NULL THEN
+    v_user_id := gen_random_uuid();
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      confirmation_token,
+      recovery_token
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      v_user_id,
+      'authenticated',
+      'authenticated',
+      'brainchildgamesin@gmail.com',
+      v_encrypted_pw,
+      now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"display_name":"Brainchild Games"}'::jsonb,
+      now(),
+      now(),
+      '',
+      ''
+    );
+  ELSE
+    -- If already exists, ensure password is set to Brainchild@2026 and email is confirmed
+    UPDATE auth.users
+    SET encrypted_password = v_encrypted_pw,
+        email_confirmed_at = COALESCE(email_confirmed_at, now()),
+        updated_at = now()
+    WHERE id = v_user_id;
+  END IF;
+
+  -- Ensure in admin_users
+  INSERT INTO public.admin_users (id, name, role, is_active)
+  VALUES (v_user_id, 'Brainchild Games', 'SUPER_ADMIN', true)
+  ON CONFLICT (id) DO UPDATE SET
+    role = 'SUPER_ADMIN',
+    is_active = true,
+    name = 'Brainchild Games',
+    updated_at = now();
+
+  -- Ensure in profiles
+  INSERT INTO public.profiles (id, display_name, email_verified, role)
+  VALUES (v_user_id, 'Brainchild Games', true, 'PLAYER')
+  ON CONFLICT (id) DO UPDATE SET
+    display_name = 'Brainchild Games',
+    email_verified = true,
+    updated_at = now();
+END $$;
+
+-- Clean slate for games: Removes demo games so you can put all your own games from the Admin Panel
+TRUNCATE TABLE games, gameplay_mechanics, store_links CASCADE;
+
+-- Customer subscribers: Full management for studio admin
+INSERT INTO subscribers (email, name, interests, status, source) VALUES
+  ('alex.chen@pixelcraft.io', 'Alex Chen', ARRAY['Dev Diary','Sky Adventure'], 'ACTIVE', 'Landing Page Hero'),
+  ('sarah.miller@gamerspulse.com', 'Sarah Miller', ARRAY['Sci-Fi','Action'], 'ACTIVE', 'Games Detail Page'),
+  ('marcus.vance@indiegaming.net', 'Marcus Vance', ARRAY['Community','Announcements'], 'ACTIVE', 'Newsletter Footer'),
+  ('elena.rostova@questlog.gg', 'Elena Rostova', ARRAY['Roguelike','Dev Diary'], 'ACTIVE', 'Early Access Modal'),
+  ('tetsuo.gaming@neo-tokyo.jp', 'Tetsuo Shima', ARRAY['Arcade','Racing'], 'ACTIVE', 'Trailer Link')
+ON CONFLICT (email) DO NOTHING;
+
+-- Customer contact messages & inquiries: Full review & reply for studio admin
+INSERT INTO contact_messages (name, email, company, subject, project_type, budget, message, status, notes) VALUES
+  ('Jordan Rivera', 'jordan@stellaris-press.com', 'Stellaris Press', 'Press & Media Interview Request', 'Press / Media Inquiry', NULL, 'Hello Brainchild team! We would love to feature your studio on our upcoming indie showcase issue and schedule a brief Q&A with your creative director.', 'UNREAD', ''),
+  ('David Zhao', 'd.zhao@apexpublishing.co.uk', 'Apex Interactive Publishing', 'Publishing & Console Porting Partnership', 'Publishing Partnership', '$150,000 - $300,000', 'We specialize in bringing indie hits to Asian console markets. Would love to connect regarding distribution and porting possibilities.', 'REVIEWED', 'Followed up via introductory email.'),
+  ('Mira Kowalska', 'mira@synthwavefest.org', 'Synthwave Festival', 'Music & Audio Licensing Inquiry', 'Music & Audio License', '$5,000', 'Can we license your original audio tracks for our annual festival trailer stream? Looking forward to your commercial licensing terms.', 'READ', '')
+ON CONFLICT DO NOTHING;
 
 -- Ensure primary admin brainchildgamesin@gmail.com is SUPER_ADMIN if the auth user already exists
 INSERT INTO admin_users (id, name, role, is_active)

@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/games', label: 'Games', icon: Gamepad2 },
   { path: '/admin/news', label: 'News & Devlog', icon: Newspaper },
-  { path: '/admin/subscribers', label: 'Subscribers', icon: Mail },
+  { path: '/admin/subscribers', label: 'Customers & Inquiries', icon: Mail },
   { path: '/admin/categories', label: 'Categories', icon: BarChart2 },
   { path: '/admin/users', label: 'Admin Users', icon: Users },
   { path: '/admin/settings', label: 'Settings & Security', icon: Settings }

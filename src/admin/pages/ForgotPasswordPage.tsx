@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ApiError, authApi } from '../utils/api';
+import { supabase } from '../../lib/supabase';
 
 /**
  * Forgot Password — wired to the studio API (`POST /api/auth/forgot-password`).
@@ -50,6 +51,15 @@ export const ForgotPasswordPage: React.FC = () => {
     setDeliveryChannel(null);
 
     try {
+      if (supabase) {
+        try {
+          const redirectTo = `${window.location.origin}/admin/reset-password`;
+          await supabase.auth.resetPasswordForEmail(trimmed, { redirectTo });
+        } catch (supaErr) {
+          console.warn('[Supabase Auth] resetPasswordForEmail notice:', supaErr);
+        }
+      }
+
       const result = await authApi.forgotPassword(trimmed);
 
       setSuccessMessage(
@@ -57,7 +67,7 @@ export const ForgotPasswordPage: React.FC = () => {
           `If ${trimmed} belongs to a studio account, a reset link is on its way. It may take a minute and could land in Promotions or Spam.`
       );
       setDevResetUrl(result.devResetUrl ?? null);
-      setDeliveryChannel(result.emailDeliveryChannel ?? null);
+      setDeliveryChannel(result.emailDeliveryChannel ?? 'supabase');
 
       // The server can't tell us the email failed for *this* address without
       // leaking account existence — but it can tell us it is not sending any
