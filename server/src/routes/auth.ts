@@ -63,11 +63,22 @@ const passwordSchema = z
 const findByEmail = (email: string) =>
   sql`lower(${adminUsers.email}) = ${email}`;
 
+/**
+ * The console authenticates with HttpOnly cookies by default. When it is
+ * embedded in a cross-site iframe (an embedded preview panel) those cookies
+ * cannot be sent, so a client that declares `X-Auth-Transport: header` receives
+ * the same tokens in the response body and returns them as
+ * `Authorization: Bearer`. See middleware/auth.ts for the header side.
+ */
+function wantsHeaderTransport(req: AuthRequest): boolean {
+  return req.get('x-auth-transport')?.trim().toLowerCase() === 'header';
+}
+
 async function issueSession(
   res: Response,
   admin: { id: string; email: string; role: string },
   meta: { ip?: string; userAgent?: string }
-): Promise<void> {
+): Promise<{ accessToken: string; refreshToken: string }> {
   const refreshToken = randomToken(48);
 
   const [session] = await db
@@ -91,6 +102,7 @@ async function issueSession(
   setSessionCookies(res, { accessToken, refreshToken });
   // The double-submit token is deliberately NOT rotated here: a client that
   // already fetched /api/auth/csrf must keep working after signing in.
+  return { accessToken, refreshToken };
 }
 
 /** POST /api/auth/login */
@@ -174,7 +186,7 @@ router.post(
       })
       .where(eq(adminUsers.id, admin.id));
 
-    await issueSession(res, admin, { ip: req.ip, userAgent: req.get('user-agent') });
+    const issued = await issueSession(res, admin, { ip: req.ip, userAgent: req.get('user-agent') });
 
     audit(req)('LOGIN', 'auth', {
       adminUserId: admin.id,
@@ -201,6 +213,15 @@ router.post(
         lastLoginAt: admin.lastLoginAt,
         temporaryPasswordInUse: usingTemporaryPassword,
       },
+      // Header transport (embedded/iframe consoles) gets the tokens in the body
+      // because it cannot rely on the Set-Cookie above being stored or sent.
+      ...(wantsHeaderTransport(req)
+        ? {
+            accessToken: issued.accessToken,
+            refreshToken: issued.refreshToken,
+            expiresInMinutes: config.accessTokenTtlMinutes,
+          }
+        : {}),
     });
   })
 );
@@ -213,11 +234,24 @@ router.get('/csrf', (req, res) => {
   res.json({ csrfToken: token });
 });
 
-/** POST /api/auth/refresh — rotates the refresh token (replay is blocked). */
+/**
+ * POST /api/auth/refresh — rotates the refresh token (replay is blocked).
+ *
+ * The refresh token comes from the `bc_sid` cookie, or from the request body
+ * for the header transport (a cross-site iframe cannot send that cookie).
+ * Rotation is identical either way: the presented token is invalidated
+ * immediately, so a replayed one fails.
+ */
 router.post(
   '/refresh',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const raw = req.cookies?.[REFRESH_COOKIE];
+    const bodyRefresh = z
+      .object({ refreshToken: z.string().min(20).max(400).optional() })
+      .parse(req.body ?? {});
+
+    const raw = typeof req.cookies?.[REFRESH_COOKIE] === 'string'
+      ? req.cookies[REFRESH_COOKIE]
+      : bodyRefresh.refreshToken;
     if (!raw || typeof raw !== 'string') throw new AppError(401, 'Session expired.', 'session_expired');
 
     const session = await db.query.adminSessions.findFirst({
@@ -256,7 +290,11 @@ router.post(
     });
 
     setSessionCookies(res, { accessToken, refreshToken: nextToken });
-    res.json({ ok: true, expiresInMinutes: config.accessTokenTtlMinutes });
+    res.json({
+      ok: true,
+      expiresInMinutes: config.accessTokenTtlMinutes,
+      ...(wantsHeaderTransport(req) ? { accessToken, refreshToken: nextToken } : {}),
+    });
   })
 );
 

@@ -122,7 +122,7 @@ the API client never sets. It now shows what actually happened:
 | *Too many sign-in attempts…* | 10 failed attempts in 15 minutes for this IP + email. Wait, or restart the API locally to clear the counter |
 | *This account is locked for N more minute(s)* | 5 failed attempts on the account — another admin can unlock it in Team → Unlock |
 | *Cannot reach the studio server* | The browser never got an answer: the API is down/restarting, or the deployment's `DATABASE_URL` is wrong |
-| *Security token missing or expired* | Cookies are blocked for the console (reload; check the browser's cookie settings) |
+| *Security token missing or expired* | Cookies are blocked for this page — typical inside an embedded preview iframe. The console switches to header-based sign-in by itself; reload the page if you still see it |
 
 ## How you can tell it is still in use
 

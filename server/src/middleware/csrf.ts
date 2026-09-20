@@ -3,8 +3,16 @@ import { CSRF_COOKIE, setCsrfCookie } from '../utils/cookies.js';
 import { randomToken, safeEqual } from '../utils/crypto.js';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { bearerAccessToken } from './auth.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Paths a header-transport client may call without the cookie-backed
+ * double-submit token: the sign-in/refresh/recovery endpoints under
+ * `/api/auth`, which are reached before (or without) any Bearer token.
+ */
+const HEADER_TRANSPORT_BOOTSTRAP_PATHS = ['/api/auth/'];
 
 /** Makes sure a CSRF token exists for the browser session. */
 export function ensureCsrfToken(req: Request, res: Response, next: NextFunction): void {
@@ -32,6 +40,37 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     res.status(403).json({ error: 'Cross-site request blocked.', code: 'csrf_failed' });
     return;
   }
+
+  /* --------------------------- header transport --------------------------- */
+
+  // A cross-site attacker cannot attach an `Authorization` header (it is not a
+  // CORS-safelisted header, so a browser would preflight it and our CORS policy
+  // refuses unknown origins), and it cannot set one from a plain form post. So a
+  // request that carries a Bearer token is not forgeable and needs no cookie
+  // double-submit. An invalid or *expired* token is deliberately still let
+  // through here: the auth middleware answers 401, which is what tells the
+  // console to refresh its session — reporting it as a CSRF error would strand
+  // the user with an error they cannot act on. Every admin route is
+  // authenticated, so nothing runs without a valid session.
+  if (bearerAccessToken(req)) {
+    next();
+    return;
+  }
+
+  // The console's own header-transport calls: it cannot hold the CSRF cookie at
+  // all (that is why it is in header mode), and the endpoints under /api/auth
+  // either require a session token or a one-time emailed proof. The guards
+  // above — cross-site rejection and the origin allow-list — still apply to
+  // every one of them, and the response to a sign-in is unreadable from another
+  // origin, so a foreign page cannot obtain the tokens it returns.
+  const path = (req.originalUrl.split('?')[0] || '').replace(/\/$/, '');
+  const headerTransport = req.get('x-auth-transport')?.trim().toLowerCase() === 'header';
+  if (headerTransport && HEADER_TRANSPORT_BOOTSTRAP_PATHS.some((prefix) => path.startsWith(prefix))) {
+    next();
+    return;
+  }
+
+  /* ---------------------------- cookie transport -------------------------- */
 
   const cookieToken = req.cookies?.[CSRF_COOKIE];
   const headerToken = req.get('x-csrf-token');

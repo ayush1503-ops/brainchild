@@ -48,7 +48,7 @@ export function describeLoginError(error: unknown): LoginErrorInfo {
       case 'csrf_failed':
         return {
           message: error.message,
-          hint: 'Cookies must be enabled for the admin console. Reload the page and try again.',
+          hint: 'Cookies are blocked for this page (common inside an embedded preview). Reload the page — the console switches to header-based sign-in automatically.',
         };
       case 'invalid_credentials':
         return {

@@ -247,6 +247,28 @@ build). If you're on Pro or Enterprise and need longer-running requests
   Migrations are recorded in `schema_migrations`, so each one applies once and
   never overwrites a password you rotated afterwards.
 
+## Embedded previews (iframes)
+
+The console signs in with HttpOnly cookies by default. Inside a **cross-site
+iframe** — an embedded preview panel, for example — browsers do not attach
+`SameSite=Lax` cookies to API calls and block third-party cookies outright in
+several browsers, so a cookie-based sign-in can never complete there: every
+request arrives unauthenticated and the API answers `csrf_missing` or
+`unauthenticated`, no matter what password is typed.
+
+The console detects that situation (`window.self !== window.top`, or a cookie
+probe that fails) and switches to the API's **header transport**:
+`POST /api/auth/login` returns the same JWT/refresh tokens in the response body,
+the client keeps them in memory (`sessionStorage` when available) and sends
+`Authorization: Bearer`. Rotation, revocation, lockouts, RBAC and the audit log
+are unchanged; CSRF double-submit is not needed in this mode because a
+cross-site attacker cannot attach an `Authorization` header, and the
+`Origin` / `Sec-Fetch-Site` guards still reject cross-site requests. Details and
+the full threat model: `SECURITY.md` §6.1.
+
+Cookie mode remains the default wherever cookies work — including the deployed
+site — so nothing changes for normal visitors.
+
 ## Security model (short version)
 
 - Admin auth: bcrypt (12 rounds) + HttpOnly `SameSite=Lax` JWT cookies +
