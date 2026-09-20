@@ -49,6 +49,33 @@ Access control is strictly enforced on the server-side via `authMiddleware`, `re
 
 - Cookies enforce `SameSite=Lax` (or `SameSite=Strict` where applicable) and `HttpOnly` attributes, ensuring third-party sites cannot perform cross-site request forgery attacks.
 - State-changing API endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) require authenticated session context and custom header checks (`Content-Type: application/json` / `X-Requested-With`).
+- Requests are additionally rejected when `Sec-Fetch-Site: cross-site`, or when the `Origin` is neither the request host nor an allow-listed studio origin. The double-submit token (`bc_csrf` cookie + `X-CSRF-Token` header) is the third layer and remains required for cookie-authenticated mutations.
+
+### 6.1 Header transport (embedded consoles)
+
+Cookies cannot be used when the console is embedded in a cross-site iframe: browsers
+withhold `SameSite=Lax` cookies from cross-site requests and block third-party cookies
+outright, so every API call would arrive unauthenticated. The console detects this
+(`window.self !== window.top`, or a failed cookie probe) and switches to the header
+transport — the same short-lived JWT returned in the `/api/auth/login` response body and
+sent back as `Authorization: Bearer`, kept in memory (plus `sessionStorage` when the
+browser allows it).
+
+This does not weaken the model:
+
+- The token is identical to the cookie token and is still validated against a live,
+  unrevoked `admin_sessions` row on every request; lockouts, RBAC, session revocation,
+  logout-everywhere and the audit log are unchanged.
+- CSRF does not apply: a cross-site attacker cannot attach an `Authorization` header
+  (it is not CORS-safelisted, so a browser preflights it and unknown origins are
+  refused), and a plain form post cannot set headers at all. The `Sec-Fetch-Site` and
+  `Origin` guards stay in force for every request in this mode.
+- The token cannot be read cross-origin, so another site cannot obtain one from the
+  victim's session.
+- Cookie mode remains the default wherever cookies work (including production), and a
+  request carrying a Bearer token is the only case where the cookie double-submit is
+  skipped; invalid or expired tokens are still rejected by the auth middleware (401),
+  which is what prompts the console to refresh.
 
 ---
 
@@ -99,7 +126,7 @@ Powered by `helmet` middleware:
 
 Before deploying to production:
 - [ ] Set strong, unique secrets in `server/.env`: `JWT_SECRET`, `JWT_REFRESH_SECRET` (min 32 characters).
-- [ ] Change the dev-default Super Admin password from `BrainchildStudio2026` (or whatever `ADMIN_PASSWORD` you seeded with).
+- [ ] Change the temporary Super Admin password from `Brainchild@2026` (or whatever `ADMIN_PASSWORD` / `TEMPORARY_ADMIN_PASSWORD` you seeded with). The console warns with a banner and the API reports `temporaryPasswordInUse: true` until it is changed — see `TEMPORARY_PASSWORD.md`.
 - [ ] Verify `NODE_ENV=production` so secure cookies require HTTPS.
 - [ ] Ensure HTTPS SSL/TLS certificate is active.
 - [ ] Verify CORS `FRONTEND_URL` is set strictly to your production domain.

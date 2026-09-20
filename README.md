@@ -47,8 +47,8 @@ storage.
    ```
    Sign in at `http://localhost:3000/admin/login`
    - **Email:** `brainchildgamesin@gmail.com` (always valid SUPER_ADMIN)
-   - **Password:** `BrainchildStudio2026` in dev (or `ADMIN_PASSWORD` / `BRAINCHILD_ADMIN_PASSWORD` env var)
-   - After first login, change password in **Settings → Change Your Password** (min 12 chars). Other sessions are revoked automatically.
+   - **Password:** `Brainchild@2026` — the shared **temporary** password (or `ADMIN_PASSWORD` / `BRAINCHILD_ADMIN_PASSWORD` env var)
+   - After first login, change password in **Settings → Change Your Password** (min 12 chars). Other sessions are revoked automatically. Until it is changed, the console shows a temporary-password warning banner — see `TEMPORARY_PASSWORD.md`.
 
 Useful scripts:
 
@@ -90,6 +90,15 @@ DATABASE_URL="postgresql://..." ADMIN_EMAIL="you@example.com" \
   ADMIN_PASSWORD="something-strong" ADMIN_NAME="Studio Admin" \
   npm run db:setup --prefix server
 ```
+
+From then on every deploy keeps the schema current by itself: the Vercel build
+runs `npm run db:migrate:deploy --prefix server`, which applies any pending
+migration before the site is built (that is how the temporary admin password in
+migration 0003 reaches production without a manual step). It never fails the
+build — if `DATABASE_URL` is not exposed to the build environment or the
+database is unreachable, it logs and continues, and you can still run
+`npm run db:migrate --prefix server` by hand. Set
+`SKIP_DB_MIGRATE_ON_BUILD=true` to turn it off.
 
 ### 2. Configure Supabase (already in your stack)
 
@@ -146,6 +155,8 @@ Set those only in Vercel's environment settings (server-side, without `VITE_`).
 | `NODE_ENV` | `production` |
 | `JWT_SECRET` | 32+ chars (`openssl rand -hex 32`) |
 | `JWT_REFRESH_SECRET` | 32+ chars (different from above) |
+| `ADMIN_EMAIL` | `brainchildgamesin@gmail.com` (primary `SUPER_ADMIN`) |
+| `ADMIN_PASSWORD` | `Brainchild@2026` — the **temporary** console password (`TEMPORARY_PASSWORD.md`); replace with your own when you are done setting up |
 | `FRONTEND_ORIGIN` | your Vercel URL (same-origin, but CSRF/origin checks use it) |
 | `STORAGE_DRIVER` | `supabase` |
 | `SUPABASE_URL` | same project URL as `VITE_SUPABASE_URL` |
@@ -228,6 +239,35 @@ build). If you're on Pro or Enterprise and need longer-running requests
   database.
 - **Function timeout** is set to 300 s (the platform maximum), which covers
   even large backup exports.
+- **Migrations**: `buildCommand` runs `db:migrate:deploy` before `vite build`,
+  so a deployment can never sit in front of an out-of-date database. Migration
+  0003 (the temporary admin password) reaches production this way. The step is
+  non-fatal by design: missing `DATABASE_URL` or an unreachable database logs a
+  warning and the build continues. `SKIP_DB_MIGRATE_ON_BUILD=true` disables it.
+  Migrations are recorded in `schema_migrations`, so each one applies once and
+  never overwrites a password you rotated afterwards.
+
+## Embedded previews (iframes)
+
+The console signs in with HttpOnly cookies by default. Inside a **cross-site
+iframe** — an embedded preview panel, for example — browsers do not attach
+`SameSite=Lax` cookies to API calls and block third-party cookies outright in
+several browsers, so a cookie-based sign-in can never complete there: every
+request arrives unauthenticated and the API answers `csrf_missing` or
+`unauthenticated`, no matter what password is typed.
+
+The console detects that situation (`window.self !== window.top`, or a cookie
+probe that fails) and switches to the API's **header transport**:
+`POST /api/auth/login` returns the same JWT/refresh tokens in the response body,
+the client keeps them in memory (`sessionStorage` when available) and sends
+`Authorization: Bearer`. Rotation, revocation, lockouts, RBAC and the audit log
+are unchanged; CSRF double-submit is not needed in this mode because a
+cross-site attacker cannot attach an `Authorization` header, and the
+`Origin` / `Sec-Fetch-Site` guards still reject cross-site requests. Details and
+the full threat model: `SECURITY.md` §6.1.
+
+Cookie mode remains the default wherever cookies work — including the deployed
+site — so nothing changes for normal visitors.
 
 ## Security model (short version)
 
@@ -240,3 +280,12 @@ build). If you're on Pro or Enterprise and need longer-running requests
   `supabase/migrations/0001_init_schema.sql`); the service-role key is used
   server-side only for media uploads.
 - Full details in `SECURITY.md`.
+
+## Documentation map
+
+| File | What it covers |
+| --- | --- |
+| `TEMPORARY_PASSWORD.md` | The shared temporary admin password `Brainchild@2026`: where it comes from, how to install/rotate it, how the console warns you while it is still in use |
+| `ADMIN_SETUP.md` | Primary admin account, environments, changing the password, testing login |
+| `PASSWORD_RESET_FIX.md` | Why the reset email is sent through Supabase Auth and how to make it arrive |
+| `SECURITY.md` | Threat model, controls and the production checklist |

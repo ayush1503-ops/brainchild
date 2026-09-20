@@ -15,6 +15,13 @@ export interface AdminUser {
   updatedAt?: string;
   /** Only ever returned for the signed-in user's own profile. */
   sessionCount?: number;
+  /**
+   * True while the account still uses the shared TEMPORARY studio password.
+   * Verified server-side against the stored hash, so changing the password in
+   * Settings clears it immediately. The console never renders the password
+   * itself — only this flag (see `TEMPORARY_PASSWORD.md`).
+   */
+  temporaryPasswordInUse?: boolean;
 }
 
 export interface SessionSummary {

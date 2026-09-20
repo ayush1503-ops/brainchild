@@ -26,6 +26,99 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/* ---------------------------- session transport ---------------------------- */
+
+/**
+ * The console signs in with HttpOnly cookies — except when it cannot.
+ *
+ * Inside a cross-site iframe (an embedded preview panel) the browser will not
+ * attach `SameSite=Lax` cookies to API calls and blocks third-party cookies
+ * outright in several browsers, so a cookie-based sign-in can never complete:
+ * every request arrives at the API without a session and it answers
+ * `csrf_missing` / `unauthenticated`. Nothing the user types can fix that.
+ *
+ * In that situation the console uses the API's documented header transport
+ * instead: the same tokens are returned in the response body and sent back as
+ * `Authorization: Bearer`. Cookie mode stays the default everywhere else, so
+ * the deployed site is unchanged.
+ */
+export type AuthTransport = 'cookie' | 'header';
+
+const HEADER_ACCESS_KEY = 'bc_header_access';
+const HEADER_REFRESH_KEY = 'bc_header_refresh';
+
+let transport: AuthTransport | null = null;
+// In-memory fallback for browsers that also block sessionStorage in a
+// third-party frame: the session then lasts for the life of the tab.
+let memoryAccess: string | null = null;
+let memoryRefresh: string | null = null;
+
+function storageGet(key: string): string | null {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return key === HEADER_ACCESS_KEY ? memoryAccess : memoryRefresh;
+  }
+}
+
+function storageSet(key: string, value: string | null): void {
+  if (key === HEADER_ACCESS_KEY) memoryAccess = value;
+  else memoryRefresh = value;
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable in this context — the in-memory copy is enough */
+  }
+}
+
+export function storeSessionTokens(accessToken?: string, refreshToken?: string): void {
+  if (accessToken) storageSet(HEADER_ACCESS_KEY, accessToken);
+  if (refreshToken) storageSet(HEADER_REFRESH_KEY, refreshToken);
+}
+
+export function clearSessionTokens(): void {
+  storageSet(HEADER_ACCESS_KEY, null);
+  storageSet(HEADER_REFRESH_KEY, null);
+}
+
+/** True when the page is rendered inside another document (preview panels). */
+function inEmbeddedFrame(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    // Cross-origin parent: reading window.top throws, which means we are framed.
+    return true;
+  }
+}
+
+/** True when the browser will actually keep a cookie we set from script. */
+function cookiesWritable(): boolean {
+  try {
+    document.cookie = '__bc_probe=1; Path=/; SameSite=Lax';
+    const writable = document.cookie.includes('__bc_probe=1');
+    document.cookie = '__bc_probe=; Path=/; Max-Age=0; SameSite=Lax';
+    return writable;
+  } catch {
+    return false;
+  }
+}
+
+export function authTransport(): AuthTransport {
+  if (!transport) transport = inEmbeddedFrame() || !cookiesWritable() ? 'header' : 'cookie';
+  return transport;
+}
+
+/** Switches to the header transport for the rest of this page's lifetime. */
+export function useHeaderTransport(): void {
+  if (transport !== 'header') {
+    transport = 'header';
+    // A cookie-mode CSRF token is meaningless in header mode; drop it so the
+    // next request does not try to reuse it.
+    csrfReady = null;
+  }
+}
+
 /** Raised for every non-2xx API response so pages can render field errors. */
 export class ApiError extends Error {
   status: number;
@@ -83,6 +176,17 @@ export async function ensureCsrf(): Promise<string | null> {
 
 client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const method = (config.method ?? 'get').toLowerCase();
+  const headerMode = authTransport() === 'header';
+
+  if (headerMode) {
+    const access = storageGet(HEADER_ACCESS_KEY);
+    if (access) config.headers.set('Authorization', `Bearer ${access}`);
+    config.headers.set('X-Auth-Transport', 'header');
+    // No CSRF token needed: the API accepts a Bearer request without one
+    // because a cross-site attacker cannot attach that header.
+    return config;
+  }
+
   if (SAFE_METHODS.has(method)) return config;
   const token = await ensureCsrf();
   if (token) config.headers.set('X-CSRF-Token', token);
@@ -95,9 +199,19 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
   if (!refreshInFlight) {
+    const headerMode = authTransport() === 'header';
+    const body = headerMode ? { refreshToken: storageGet(HEADER_REFRESH_KEY) ?? undefined } : {};
+
     refreshInFlight = client
-      .post('/auth/refresh')
-      .then(() => true)
+      .post<{ accessToken?: string; refreshToken?: string }>('/auth/refresh', body)
+      .then((response) => {
+        if (headerMode) {
+          const { accessToken, refreshToken } = response.data ?? {};
+          if (!accessToken) return false;
+          storeSessionTokens(accessToken, refreshToken);
+        }
+        return true;
+      })
       .catch(() => false)
       .finally(() => {
         refreshInFlight = null;
@@ -113,8 +227,21 @@ client.interceptors.response.use(
     const status = error.response?.status;
     const code = (error.response?.data as { code?: string } | undefined)?.code;
     const isAuthRoute = typeof config?.url === 'string' && config.url.startsWith('/auth/');
+    // `/auth/me` is the session probe, not a credential submission: it is safe
+    // to refresh and retry it, so a reload after the access token's 30 minutes
+    // keeps the session instead of bouncing back to the login page.
+    const refreshable = !isAuthRoute || config?.url === '/auth/me';
 
-    if (status === 401 && config && !config._retried && !isAuthRoute) {
+    // Browsers that silently drop third-party cookies make cookie mode
+    // impossible; switch transports and retry instead of showing the user a
+    // "security token missing" dead end they cannot act on.
+    if (code === 'csrf_missing' && authTransport() === 'cookie' && config && !config._retried) {
+      config._retried = true;
+      useHeaderTransport();
+      return client.request(config);
+    }
+
+    if (status === 401 && config && !config._retried && refreshable) {
       config._retried = true;
       if (await refreshSession()) {
         return client.request(config);
@@ -156,14 +283,29 @@ export const authApi = {
     return data.admin;
   },
   async login(email: string, password: string) {
-    const { data } = await client.post<{ admin: AdminUser; csrfToken: string }>('/auth/login', { email, password });
+    const { data } = await client.post<{
+      admin: AdminUser;
+      csrfToken?: string;
+      /** Present for the header transport (embedded consoles). */
+      accessToken?: string;
+      refreshToken?: string;
+    }>('/auth/login', { email, password });
+    storeSessionTokens(data.accessToken, data.refreshToken);
     return data;
   },
   async logout() {
-    await client.post('/auth/logout');
+    try {
+      await client.post('/auth/logout');
+    } finally {
+      clearSessionTokens();
+    }
   },
   async logoutAll() {
-    await client.post('/auth/logout-all');
+    try {
+      await client.post('/auth/logout-all');
+    } finally {
+      clearSessionTokens();
+    }
   },
   async changePassword(currentPassword: string, newPassword: string) {
     await client.post('/auth/change-password', { currentPassword, newPassword });

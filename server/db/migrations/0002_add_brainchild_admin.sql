@@ -4,6 +4,12 @@
 -- In production, the seed script overwrites this with ADMIN_PASSWORD, so this hash is only a fallback.
 -- If the account already exists, this migration only ensures role = SUPER_ADMIN and is_active = true.
 
+-- On databases migrated after 2026-09, 0003_temporary_admin_password.sql
+-- replaces the hash below with the current shared temporary password
+-- ("Brainchild@2026"). Fresh installs run both in filename order, so the value
+-- from 0003 is the one that ends up in effect; this row is kept as-is so the
+-- migration history stays an accurate record of what each step did.
+
 -- Insert primary admin if missing (idempotent)
 INSERT INTO admin_users (email, name, role, is_active, password_hash, password_changed_at)
 SELECT

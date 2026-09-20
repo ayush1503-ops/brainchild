@@ -92,10 +92,41 @@ async function loadAdmin(adminId: string, sessionId: string): Promise<SessionAdm
   };
 }
 
+/**
+ * `Authorization: Bearer <access token>` — the header transport.
+ *
+ * The console normally authenticates with the HttpOnly `bc_at` cookie. That
+ * cannot work when the site is embedded in a cross-site iframe (an embedded
+ * preview panel, for example): `SameSite=Lax` cookies are not attached to
+ * cross-site requests and third-party cookies are blocked by several browsers,
+ * so every request would arrive unauthenticated. The client detects that case
+ * and switches to sending the same signed token in this header instead.
+ *
+ * Security is unchanged: the token is the same short-lived JWT, still checked
+ * against a live, unrevoked session row, and a header can only be attached by
+ * script running on our own origin — which is also why the CSRF double-submit
+ * check is unnecessary in this mode (see middleware/csrf.ts).
+ */
+export function bearerAccessToken(req: Request): string | null {
+  const header = req.get('authorization');
+  if (!header) return null;
+  const [scheme, value] = header.split(' ');
+  if (!value || scheme.toLowerCase() !== 'bearer') return null;
+  const token = value.trim();
+  return token.length > 0 ? token : null;
+}
+
+/** Cookie first (unchanged default), header as the fallback transport. */
+function accessTokenFrom(req: Request): string | null {
+  const cookie = req.cookies?.[ACCESS_COOKIE];
+  if (typeof cookie === 'string' && cookie.length > 0) return cookie;
+  return bearerAccessToken(req);
+}
+
 /** Reads the access cookie, validates the session, and loads the live admin row. */
 export async function authenticate(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
   try {
-    const token = req.cookies?.[ACCESS_COOKIE];
+    const token = accessTokenFrom(req);
     if (!token || typeof token !== 'string') {
       throw new AppError(401, 'Please sign in to continue.', 'unauthenticated');
     }
@@ -119,7 +150,7 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
 
 /** Same as authenticate but never blocks the request. */
 export async function optionalAuthenticate(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
-  const token = req.cookies?.[ACCESS_COOKIE];
+  const token = accessTokenFrom(req);
   if (!token || typeof token !== 'string') return next();
 
   const payload = verifyAccessToken(token);

@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db, closeDatabase } from '../src/db/index.js';
 import { adminUsers } from '../src/db/schema.js';
 import { hashPassword } from '../src/utils/crypto.js';
+import { temporaryAdminPassword } from '../src/config/temporary-password.js';
 
 /**
  * Resets password for brainchildgamesin@gmail.com to a known value.
@@ -10,10 +11,15 @@ import { hashPassword } from '../src/utils/crypto.js';
  *   npx tsx scripts/reset-brainchild-password.ts
  *   BRAINCHILD_ADMIN_PASSWORD=MyNewStrongPass123 npx tsx scripts/reset-brainchild-password.ts
  *   ADMIN_PASSWORD=MyNewStrongPass123 npx tsx scripts/reset-brainchild-password.ts
+ *   TEMPORARY_ADMIN_PASSWORD=Another@Temp2026 npx tsx scripts/reset-brainchild-password.ts
+ *
+ * With no override this restores the shared TEMPORARY password
+ * (default "Brainchild@2026" — see src/config/temporary-password.ts), which is
+ * the same value seed.ts and migration 0003 install.
  */
 
 const PRIMARY_EMAIL = 'brainchildgamesin@gmail.com';
-const DEV_PASSWORD = 'BrainchildStudio2026';
+const DEV_PASSWORD = temporaryAdminPassword();
 
 async function main() {
   const newPassword = process.env.BRAINCHILD_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || DEV_PASSWORD;

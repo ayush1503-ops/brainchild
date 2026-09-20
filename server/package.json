@@ -25,6 +25,7 @@
     "reset-flow:test": "tsx src/scripts/reset-flow-test.ts",
     "backup": "bash scripts/backup.sh",
     "restore": "bash scripts/restore.sh",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:migrate:deploy": "node scripts/migrate-on-build.mjs"
   }
 }
