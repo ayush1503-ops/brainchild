@@ -1,6 +1,6 @@
 # Admin Setup — brainchildgamesin@gmail.com
 
-Primary studio admin **brainchildgamesin@gmail.com** is always valid as `SUPER_ADMIN` across both auth systems.
+Primary studio admin **brainchildgamesin@gmail.com** is always valid as `SUPER_ADMIN` in the Express/PostgreSQL admin API. Supabase Auth is a separate store used by the player-facing site.
 
 ## 1. Express + PostgreSQL (main admin API)
 
@@ -35,7 +35,7 @@ Then run from your machine:
 DATABASE_URL="postgresql://..." ADMIN_EMAIL="brainchildgamesin@gmail.com" ADMIN_PASSWORD="strong-pass" npm run db:setup --prefix server
 ```
 
-## 2. Supabase Auth (player auth + alternative admin)
+## 2. Supabase Auth (player-facing auth only)
 
 ### How it works
 - `supabase/migrations/0005_add_brainchild_admin.sql`:
@@ -59,7 +59,7 @@ SELECT id, name, role, is_active FROM admin_users WHERE id IN (SELECT id FROM au
 ```
 
 ### Password reset
-If you created the Supabase user but forgot password, use `/admin/forgot-password` which calls `supabase.auth.resetPasswordForEmail` — Supabase sends reset email to Gmail (check Spam/Promotions).
+This Supabase flow is only for player-facing Supabase accounts. It is **not** the reset flow for the studio admin console. The admin console uses `admin_users.password_hash` in the Express API; `/admin/forgot-password` calls `POST /api/auth/forgot-password` and `/admin/reset-password?token=...` consumes the API token. If this page is sending a request to `https://*.supabase.co/auth/v1/recover`, the deployed site is an older build and must be redeployed from the current branch.
 
 ## 3. Frontend
 
@@ -118,9 +118,11 @@ ADMIN_PASSWORD=MyNewStrongPass123 npm run seed
 3. Check Gmail inbox (including Spam/Promotions) for reset link
 4. Link points to `/admin/reset-password?token=...` → set new password
 
-**Option D — Supabase dashboard (if using Supabase auth):**
-1. Supabase Dashboard → Authentication → Users → find `brainchildgamesin@gmail.com`
+**Option D — Supabase dashboard (player auth only):**
+1. Supabase Dashboard → Authentication → Users → find the player account
 2. Click ⋯ → Reset password or send magic link
+
+This does not change the Express admin-console password. For the studio admin, use Option B or the API-backed forgot-password flow above.
 
 ### Production
 - Set `ADMIN_PASSWORD` in Vercel env to a strong unique password (min 12 chars)
