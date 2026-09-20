@@ -28,8 +28,8 @@ and it must be replaced before you treat the console as private.
 | `server/scripts/reset-brainchild-password.ts` | `npm run admin:set-password` restores it when no password env var is given |
 | `server/.env.example` | `ADMIN_PASSWORD="Brainchild@2026"` so a fresh `server/.env` matches |
 | `server/src/routes/auth.ts` | Reports `temporaryPasswordInUse` on login and `/api/auth/me` |
-| `src/admin/components/AdminLayout.tsx` | Console banner while the temporary password is still in use |
-| `src/admin/pages/LoginPage.tsx` | Prints the credential on the login page **in dev builds only** |
+| `src/admin/components/AdminLayout.tsx` | Console banner while the temporary password is still in use (warns, never prints the password) |
+| `src/admin/pages/LoginPage.tsx`, `SettingsPage.tsx` | Deliberately password-free: no screen in the console displays the active password |
 
 ## Overrides
 
@@ -108,13 +108,19 @@ All four are computed by checking the *stored hash* on the server, so the moment
 you set a private password the flag and the banner disappear — nothing to clear
 by hand.
 
+**No screen in the console ever displays a password** — not the login page, not
+Settings, not the user list (the one-time passwords shown when you invite a
+*new* teammate are generated per invite and shown once at creation time). The
+value lives only in this repository's server code, the database hash, and the
+docs you are reading.
+
 ## Is this safe?
 
 For a personal/studio project where the console must always be reachable, yes —
 it is the same trade-off as a seeded demo login. Understand what it means:
 
-* Anyone who can read this repository (or the login page in a dev build) knows
-  the credential. Treat the console as *reachable* until you change it.
+* Anyone who can read this repository knows the credential. Treat the console as
+  *reachable* until you change it.
 * The console password lives in **one** place: `admin_users.password_hash` in the
   API database. Supabase Auth is only used to *deliver* reset emails, so changing
   a password in the Supabase dashboard does **not** change the console login
