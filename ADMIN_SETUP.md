@@ -35,7 +35,7 @@ Then run from your machine:
 DATABASE_URL="postgresql://..." ADMIN_EMAIL="brainchildgamesin@gmail.com" ADMIN_PASSWORD="strong-pass" npm run db:setup --prefix server
 ```
 
-## 2. Supabase Auth (player-facing auth only)
+## 2. Supabase Auth (player-facing auth + carrier for the admin reset email)
 
 ### How it works
 - `supabase/migrations/0005_add_brainchild_admin.sql`:
@@ -43,23 +43,37 @@ DATABASE_URL="postgresql://..." ADMIN_EMAIL="brainchildgamesin@gmail.com" ADMIN_
   - Ensures `profiles` row exists with `display_name = Brainchild Games`
   - Ensures `admin_users` row exists with `role = SUPER_ADMIN`, `is_active = true`
   - Creates trigger `trg_auto_promote_primary_admin` that auto-promotes this email on any future INSERT into `auth.users`
-- `supabase/0003_auth_email_setup.sql` does the same for password-reset flow
-- `supabase/apply_now.sql` is a one-file setup that includes the trigger + promotion
+- `supabase/migrations/0006_harden_primary_admin_trigger.sql` replaces that trigger with an
+  `AFTER INSERT`, exception-guarded version. The original `BEFORE INSERT` trigger inserted into
+  tables that reference `auth.users(id)` before the row existed, so creating
+  `brainchildgamesin@gmail.com` in Supabase Auth failed with "Database error creating new user".
+  **Run 0006 on every project that ran 0005 or `apply_now.sql`.**
+- `supabase/0003_auth_email_setup.sql` confirms/promotes an already-existing auth user
+- `supabase/apply_now.sql` is a one-file setup that includes the (fixed) trigger + promotion
 
 ### Setup steps (Supabase Dashboard → SQL Editor)
 1. Run `supabase/migrations/0001_init_schema.sql` (or `apply_now.sql` for one-go)
 2. Run `supabase/migrations/0002_seed.sql`
 3. Run `supabase/migrations/0004_add_media_bucket.sql`
 4. Run `supabase/migrations/0005_add_brainchild_admin.sql`
-5. Create user `brainchildgamesin@gmail.com` in Authentication → Users → Add user
-6. Verify:
+5. Run `supabase/migrations/0006_harden_primary_admin_trigger.sql`
+6. The auth user `brainchildgamesin@gmail.com` is created automatically the first time the
+   admin console's *Forgot password* is used (or add it manually in Authentication → Users →
+   Add user with *Auto Confirm User* ticked)
+7. Verify:
 ```sql
 SELECT id, email, email_confirmed_at FROM auth.users WHERE email = 'brainchildgamesin@gmail.com';
 SELECT id, name, role, is_active FROM admin_users WHERE id IN (SELECT id FROM auth.users WHERE email = 'brainchildgamesin@gmail.com');
 ```
 
 ### Password reset
-This Supabase flow is only for player-facing Supabase accounts. It is **not** the reset flow for the studio admin console. The admin console uses `admin_users.password_hash` in the Express API; `/admin/forgot-password` calls `POST /api/auth/forgot-password` and `/admin/reset-password?token=...` consumes the API token. If this page is sending a request to `https://*.supabase.co/auth/v1/recover`, the deployed site is an older build and must be redeployed from the current branch.
+The admin console password lives in `admin_users.password_hash` in the Express API — **not** in
+Supabase. Supabase Auth is used only to *deliver* the reset email: `/admin/forgot-password` →
+`POST /api/auth/forgot-password` → Supabase sends its "Reset Password" email →
+`/admin/reset-password#…type=recovery` → `POST /api/auth/reset-password` verifies the Supabase
+recovery session server-side and rotates the API password. Dashboard prerequisites (redirect URL
+allow-list, who the built-in mailer can deliver to, SMTP) and the Vercel variables are listed in
+`PASSWORD_RESET_FIX.md`.
 
 ## 3. Frontend
 
@@ -115,14 +129,16 @@ ADMIN_PASSWORD=MyNewStrongPass123 npm run seed
 **Option C — Forgot password flow:**
 1. Go to `/admin/forgot-password`
 2. Enter `brainchildgamesin@gmail.com`
-3. Check Gmail inbox (including Spam/Promotions) for reset link
-4. Link points to `/admin/reset-password?token=...` → set new password
+3. Check Gmail inbox (including Spam/Promotions) for the Supabase "Reset Password" email
+4. The link lands on `/admin/reset-password` with the form unlocked → set new password
+   (requires the Supabase dashboard setup in `PASSWORD_RESET_FIX.md`; locally with
+   `DEV_EXPOSE_RESET_LINK=true` the link is shown on the page instead of being emailed)
 
 **Option D — Supabase dashboard (player auth only):**
 1. Supabase Dashboard → Authentication → Users → find the player account
 2. Click ⋯ → Reset password or send magic link
 
-This does not change the Express admin-console password. For the studio admin, use Option B or the API-backed forgot-password flow above.
+This does not change the Express admin-console password. For the studio admin, use Option B or the forgot-password flow above.
 
 ### Production
 - Set `ADMIN_PASSWORD` in Vercel env to a strong unique password (min 12 chars)

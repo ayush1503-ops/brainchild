@@ -4,13 +4,17 @@
 --  Run this in Supabase SQL Editor after apply_now.sql (0001 + 0002).
 --
 --  ⚠️ READ THIS FIRST
---  The admin console password reset does NOT use Supabase Auth. `/admin/login`
---  checks `admin_users.password_hash` via the Express API, and
---  `POST /api/auth/forgot-password` issues the reset token. Supabase Auth here
---  is for the public site (player sign-up, OAuth, published-content RLS).
---  To reset an ADMIN console password use:
+--  The admin console password lives in `admin_users.password_hash` (Express
+--  API), NOT in Supabase. Supabase Auth only *delivers* the admin reset email:
+--  `POST /api/auth/forgot-password` creates/reuses the auth user and asks
+--  Supabase to send the recovery link; `POST /api/auth/reset-password` then
+--  verifies that recovery session server-side and rotates the API password.
+--  Changing the password in Supabase (dashboard → Users → Reset password) has
+--  no effect on the console. To set an ADMIN console password directly use:
 --      npm run admin:set-password --prefix server
---  See supabase/README.md → "Admin password reset does not use Supabase Auth".
+--  See supabase/README.md → "Admin password reset" and PASSWORD_RESET_FIX.md.
+--  If creating brainchildgamesin@gmail.com in Auth → Users fails with
+--  "Database error creating new user", run migrations/0006 first.
 --
 --  What this file deliberately does NOT do:
 --  There is no `auth.config` table. Site URL and the redirect allow-list are

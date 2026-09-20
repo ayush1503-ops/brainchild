@@ -185,11 +185,53 @@ async function main(): Promise<void> {
     forgotKnown.body?.message === forgotUnknown.body?.message,
     `${forgotKnown.body?.message} / ${forgotUnknown.body?.message}`
   );
+  check(
+    'delivery readiness is identical for known and unknown emails (no enumeration)',
+    forgotKnown.body?.emailDeliveryEnabled === forgotUnknown.body?.emailDeliveryEnabled &&
+      forgotKnown.body?.emailDeliveryChannel === forgotUnknown.body?.emailDeliveryChannel,
+    `${format(forgotKnown.body).slice(0, 120)} / ${format(forgotUnknown.body).slice(0, 120)}`
+  );
   const devLinkExpected = (process.env.NODE_ENV ?? 'development') !== 'production';
-  check('reset link is only exposed in development', Boolean(forgotKnown.body?.devResetUrl) === devLinkExpected);
+  const resetChannel = String(forgotKnown.body?.emailDeliveryChannel ?? 'none');
+  if (resetChannel === 'supabase') {
+    // With Supabase Auth carrying the email, the dev link is Supabase's own
+    // action link (minted via generate_link) — or absent if Supabase rejected
+    // the request (e.g. rate limit). Either way it is not a local token link.
+    check(
+      'supabase channel never returns a local token link',
+      !String(forgotKnown.body?.devResetUrl ?? '').includes('/admin/reset-password?token='),
+      forgotKnown.body?.devResetUrl
+    );
+    check(
+      'reset link is only exposed in development (supabase channel)',
+      devLinkExpected || !forgotKnown.body?.devResetUrl,
+      forgotKnown.body?.devResetUrl
+    );
+  } else {
+    check('reset link is only exposed in development', Boolean(forgotKnown.body?.devResetUrl) === devLinkExpected);
+  }
+
+  // A Supabase recovery session that is not a Supabase session at all must be
+  // rejected before any password is touched, regardless of channel.
+  const bogusSupabase = await anon.post('/api/auth/reset-password', {
+    supabaseAccessToken: 'not-a-real-supabase-access-token-value',
+    newPassword: `Str0ngReset${stamp}`,
+  });
+  check(
+    'forged supabase recovery session is rejected',
+    [400, 503].includes(bogusSupabase.status),
+    `${bogusSupabase.status} ${format(bogusSupabase.body).slice(0, 80)}`
+  );
+  const bothProofs = await anon.post('/api/auth/reset-password', {
+    token: 'x'.repeat(40),
+    supabaseAccessToken: 'y'.repeat(40),
+    newPassword: `Str0ngReset${stamp}`,
+  });
+  expectStatus(bothProofs, 400, 'reset refuses two proofs in one request');
 
   // One-time reset token: used once, then dead.
-  const resetToken = String(forgotKnown.body?.devResetUrl ?? '').split('token=')[1] ?? '';
+  const resetToken =
+    resetChannel === 'supabase' ? '' : (String(forgotKnown.body?.devResetUrl ?? '').split('token=')[1] ?? '');
   if (resetToken) {
     const weakReset = await anon.post('/api/auth/reset-password', { token: resetToken, newPassword: 'short' });
     expectStatus(weakReset, 400, 'weak password rejected on reset');
@@ -201,6 +243,8 @@ async function main(): Promise<void> {
       [400, 429].includes(replay.status),
       `${replay.status} ${format(replay.body).slice(0, 80)}`
     );
+  } else if (resetChannel === 'supabase') {
+    console.log('    (token replay probe skipped: reset emails are delivered by Supabase Auth on this server)');
   } else {
     check('reset flow exercised (token available)', false, 'no dev reset URL returned');
   }

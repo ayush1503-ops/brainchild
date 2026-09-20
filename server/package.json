@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Brainchild Studio — secure API and admin/CMS backend. All runtime dependencies (including nodemailer, used for password-reset email) are declared in the repository root package.json so a single `npm ci` at the root installs everything the Vercel function needs. Only the local-dev-only embedded Postgres package is installed here.",
+  "description": "Brainchild Studio \u2014 secure API and admin/CMS backend. All runtime dependencies (including nodemailer, used for password-reset email) are declared in the repository root package.json so a single `npm ci` at the root installs everything the Vercel function needs. Only the local-dev-only embedded Postgres package is installed here.",
   "optionalDependencies": {
     "embedded-postgres": "17.10.0-beta.17"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:fake-auth": "node scripts/fake-gotrue.mjs",
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
@@ -21,6 +22,7 @@
     "admin:set-password": "tsx scripts/reset-brainchild-password.ts",
     "security:test": "tsx src/scripts/security-test.ts",
     "smoke:test": "tsx src/scripts/smoke-test.ts",
+    "reset-flow:test": "tsx src/scripts/reset-flow-test.ts",
     "backup": "bash scripts/backup.sh",
     "restore": "bash scripts/restore.sh",
     "db:migrate": "node scripts/migrate.mjs"

@@ -180,20 +180,30 @@ export const authApi = {
     const { data } = await client.post<{
       message: string;
       devResetUrl?: string;
+      /** Development only: why the send failed (never returned in production). */
+      devDeliveryError?: string;
       emailDeliveryEnabled?: boolean;
+      /** Which service carries the email for this deployment. */
+      emailDeliveryChannel?: 'supabase' | 'smtp' | 'console' | 'none';
       emailDeliveryReason?: string;
     }>('/auth/forgot-password', { email });
     return data;
   },
   /**
-   * Consumes a one-time token from the reset email.
+   * Sets a new password using one of two proofs from the reset email:
+   *  - `{ token }`               the one-time token in an SMTP/console reset link
+   *  - `{ supabaseAccessToken }` the session Supabase created when its emailed
+   *                              recovery link was opened
    *
    * The payload key is `newPassword`, not `password`: the route validates with
    * a `.strict()` Zod object (see `server/src/routes/auth.ts`), so a wrong key
    * is rejected with a 400 before the password is ever touched.
    */
-  async resetPassword(token: string, newPassword: string) {
-    const { data } = await client.post<{ message: string }>('/auth/reset-password', { token, newPassword });
+  async resetPassword(
+    proof: { token: string } | { supabaseAccessToken: string },
+    newPassword: string
+  ) {
+    const { data } = await client.post<{ message: string }>('/auth/reset-password', { ...proof, newPassword });
     return data;
   },
   async sessions() {

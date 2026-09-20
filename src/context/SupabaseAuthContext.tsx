@@ -7,8 +7,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { Session, User, AuthError, AuthResponse } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  isPasswordRecoveryCallback,
+  hasAuthCallbackError,
+} from '../lib/supabase';
 
 /**
  * React context that wraps the Supabase Auth client.
@@ -32,6 +38,12 @@ export interface SupabaseAuthContextValue {
   session: Session | null;
   /** True if VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are set. */
   configured: boolean;
+  /**
+   * True when the current session was created by opening a password-recovery
+   * email link (Supabase's `PASSWORD_RECOVERY` event, or a recovery callback
+   * in the URL on this page load). Cleared on sign-out.
+   */
+  passwordRecovery: boolean;
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<AuthResponse>;
   signIn: (email: string, password: string) => Promise<AuthResponse>;
   signInWithOAuth: (
@@ -54,6 +66,9 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState<boolean>(configured);
   const [user, setUser] = useState<User | null>(null);
+  // Seeded from the URL so the flag is correct even if the SDK's
+  // PASSWORD_RECOVERY event fires before this provider subscribes.
+  const [passwordRecovery, setPasswordRecovery] = useState<boolean>(() => configured && isPasswordRecoveryCallback());
 
   // First mount: pull initial session, then subscribe to auth state changes.
   useEffect(() => {
@@ -73,9 +88,11 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') setPasswordRecovery(false);
     });
 
     return () => {
@@ -142,6 +159,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       user,
       session,
       configured,
+      passwordRecovery,
       signUp,
       signIn,
       signInWithOAuth,
@@ -149,7 +167,19 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       resetPasswordForEmail,
       updatePassword,
     }),
-    [loading, user, session, configured, signUp, signIn, signInWithOAuth, signOut, resetPasswordForEmail, updatePassword]
+    [
+      loading,
+      user,
+      session,
+      configured,
+      passwordRecovery,
+      signUp,
+      signIn,
+      signInWithOAuth,
+      signOut,
+      resetPasswordForEmail,
+      updatePassword,
+    ]
   );
 
   return <SupabaseAuthContext.Provider value={value}>{children}</SupabaseAuthContext.Provider>;
@@ -162,6 +192,31 @@ export function useSupabaseAuth(): SupabaseAuthContextValue {
     throw new Error('useSupabaseAuth must be used within a <SupabaseAuthProvider>');
   }
   return ctx;
+}
+
+/**
+ * Sends a password-recovery landing to the reset screen, wherever it arrived.
+ *
+ * The link in Supabase's email redirects to `redirect_to` only when that URL
+ * is on the project's redirect allow-list; otherwise Supabase falls back to the
+ * project's Site URL (usually the home page). Mount this once inside the router
+ * so a recovery session — or a "link expired" error — that lands on any route
+ * is carried to `/admin/reset-password`, where the page knows what to do.
+ */
+export function PasswordRecoveryRedirect({ to = '/admin/reset-password' }: { to?: string }) {
+  const { passwordRecovery, configured } = useSupabaseAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!configured) return;
+    if (location.pathname.startsWith(to)) return;
+    if (passwordRecovery || hasAuthCallbackError()) {
+      navigate({ pathname: to, hash: window.location.hash }, { replace: true });
+    }
+  }, [configured, passwordRecovery, location.pathname, navigate, to]);
+
+  return null;
 }
 
 /** Convenience hook: returns the current access token (for attaching to API calls). */

@@ -7,15 +7,24 @@ continues to handle the admin/CMS API unchanged.
 
 ## 1. Configure env
 
-Your publishable key is already written to `/.env.local`:
+The project is `kxirdoacrphluervussu` — its URL is
+`https://kxirdoacrphluervussu.supabase.co` (the project *ref* is the subdomain;
+the publishable key `sb_publishable_…` is **not** part of the URL).
 
-```
-VITE_SUPABASE_URL=https://h6m5jo2yd75st3tw.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_h6m5Jo2yd75st3tw_VcOMg_XXiDu9d3
-```
+Keys live in two git-ignored files (copy from the `.env.example` next to each):
+
+| File | Variables | Which key |
+| --- | --- | --- |
+| `/.env.local` (browser bundle) | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | publishable / anon key only |
+| `/server/.env` (API) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `STORAGE_DRIVER=supabase` | service-role key stays here |
+
+On Vercel set the same names in **Project → Settings → Environment Variables**
+(the `VITE_` pair is inlined at build time; the rest is read by the API at
+runtime). Dashboard location of the keys: **Project Settings → API Keys**.
 
 > ⚠️ Never put the **service-role** key in a `VITE_` variable — that key
-> bypasses RLS and must stay on the server.
+> bypasses RLS and must stay on the server. Rotate it in the dashboard if it
+> was ever pasted into a chat, a ticket or a commit.
 
 ## 2. Apply the SQL migrations
 
@@ -23,6 +32,14 @@ Open your Supabase project dashboard → **SQL Editor**, and run, in order:
 
 1. `supabase/migrations/0001_init_schema.sql` — tables, functions, RLS, storage buckets
 2. `supabase/migrations/0002_seed.sql` — starter categories, settings, one sample job
+3. `supabase/migrations/0004_add_media_bucket.sql` — public `media` bucket for uploads
+4. `supabase/migrations/0005_add_brainchild_admin.sql` — primary-admin promotion trigger
+5. `supabase/migrations/0006_harden_primary_admin_trigger.sql` — **run this even if
+   0005 was applied long ago.** The original 0005 trigger fired `BEFORE INSERT`
+   on `auth.users` and inserted into tables that reference `auth.users(id)`, so
+   creating `brainchildgamesin@gmail.com` (and only that address) failed with
+   "Database error creating new user". 0006 replaces it with an `AFTER INSERT`,
+   exception-guarded version.
 
 If you use the Supabase CLI you can instead run `supabase db push`.
 
@@ -84,22 +101,86 @@ function SignupBox() {
 | Authenticated player | All anon permissions. Read/update their own `profiles` row, manage their `wishlists`, upload their own avatar. |
 | Studio editor / admin / super-admin | Full CRUD on every table plus upload/delete in all storage buckets. |
 
-## Admin password reset does not use Supabase Auth
+## Admin password reset: Supabase Auth carries the email, the API owns the password
 
 This is the most important thing to know before debugging a broken reset link.
 
-| Flow | Credential store | Endpoints |
+| Flow | Credential store | Who sends the email |
 | --- | --- | --- |
-| **Admin console** (`/admin/login`) | `admin_users.password_hash` (bcrypt), managed by the Express API | `POST /api/auth/forgot-password` → `GET /admin/reset-password?token=…` → `POST /api/auth/reset-password` |
-| Public site / players | Supabase `auth.users` | `supabase.auth.*` from the browser |
+| **Admin console** (`/admin/login`) | `admin_users.password_hash` (bcrypt) in the API's Postgres | Supabase Auth (recovery email) when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set; otherwise the API's SMTP mailer |
+| Public site / players | Supabase `auth.users` | Supabase Auth, from the browser |
 
-`ForgotPasswordPage` and `ResetPasswordPage` used to call
-`supabase.auth.resetPasswordForEmail`, which writes to `auth.users` — a
-*different* store from the one `/api/auth/login` checks. A Supabase reset link
-could therefore succeed and still leave you unable to sign in. Both pages now
-talk to the Express API, and `useSupabaseAuth()` has no callers.
+The two stores are different: an older version of the console called
+`supabase.auth.resetPasswordForEmail` from the browser and then
+`updateUser({ password })`, which changed the **Supabase** password while
+`/api/auth/login` kept checking `admin_users` — the link "worked" and you still
+could not sign in. The current flow keeps Supabase as the *mail carrier* only:
 
-Supabase is still used by this project for the public site (newsletter,
+1. `POST /api/auth/forgot-password` — the API looks the address up in
+   `admin_users`. For a real admin it makes sure a confirmed user with the same
+   email exists in Supabase Auth (created with the service-role key on first
+   use, reused afterwards) and asks Supabase to send its **Reset Password**
+   email with `redirect_to = <APP_BASE_URL>/admin/reset-password`. Unknown
+   addresses get the identical response and never touch Supabase.
+2. The email link goes to Supabase (`/auth/v1/verify`), which redirects to
+   `/admin/reset-password#access_token=…&type=recovery`. The Supabase browser
+   client turns that into a session and fires `PASSWORD_RECOVERY`.
+3. `ResetPasswordPage` posts `{ supabaseAccessToken, newPassword }` to
+   `POST /api/auth/reset-password`. The API verifies the token **server-side**
+   (`GET /auth/v1/user` with the service-role key), requires `amr` to contain a
+   `recovery` entry newer than `RECOVERY_SESSION_MAX_AGE_MINUTES` (60), requires
+   the email to belong to an active admin, rotates `admin_users.password_hash`,
+   revokes every other console session **and** the Supabase session, and writes
+   `PASSWORD_RESET_COMPLETED` to the audit log. Replays, `password`-login
+   sessions, forged JWTs and stale sessions are all rejected with `400`.
+
+Without Supabase configured (`PASSWORD_RESET_CHANNEL=smtp`, or no
+`SUPABASE_URL`) the API falls back to its own single-use token link
+(`/admin/reset-password?token=…`) delivered over SMTP — or printed to the log
+in development. `POST /api/auth/reset-password` accepts exactly one proof per
+request: `token` *or* `supabaseAccessToken`.
+
+### Dashboard checklist for the reset email (one-time)
+
+1. **Authentication → URL Configuration**
+   - Site URL: `https://www.brainchildapp.com`
+   - Redirect URLs: `https://www.brainchildapp.com/admin/reset-password` and
+     `http://localhost:3000/admin/reset-password` (Supabase silently falls back
+     to the Site URL when `redirect_to` is not on this list — the link then
+     lands on the homepage instead of the reset form).
+2. **Authentication → Emails → Templates → Reset Password** must keep
+   `{{ .ConfirmationURL }}` (or the equivalent `{{ .SiteURL }}`-free token link).
+3. **Email delivery.** Supabase's built-in mailer is rate-limited (a few emails
+   per hour) and **only delivers to email addresses that are members of the
+   Supabase organisation/project** — invite `brainchildgamesin@gmail.com` under
+   **Organization → Team** or configure a real provider under
+   **Authentication → SMTP Settings** (Resend, Postmark, SES…). Custom SMTP
+   removes both limits.
+4. **Authentication → Rate Limits**: "Rate limit for sending emails" defaults
+   to 2 per hour without custom SMTP. Raise it once SMTP is configured.
+5. Run `supabase/migrations/0006_harden_primary_admin_trigger.sql` (see §2) so
+   the auth user for the primary admin can actually be created.
+
+### Verifying it end to end
+
+- Production: on `/admin/forgot-password` submit `brainchildgamesin@gmail.com`,
+  open the "Reset Password" email, set a new password, sign in at
+  `/admin/login`. The API log shows `Password reset requested … delivered:true`
+  (or `Password reset email was not delivered` with a `reason` such as
+  `rate_limited`, `create_user_failed:…` or `network_error`) and the
+  **Activity** page in the console shows `PASSWORD_RESET_REQUESTED` /
+  `PASSWORD_RESET_COMPLETED`.
+- Locally without an inbox: `server/.env` has `DEV_EXPOSE_RESET_LINK=true`, so
+  the forgot-password response contains the link (`devResetUrl`) and the
+  forgot-password page renders it. Set it to `false` to make Supabase really
+  send the email to your inbox.
+- Offline regression test:
+  `npm run dev:fake-auth --prefix server` (stand-in for Supabase Auth on
+  `127.0.0.1:54321`), then start the API with
+  `SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_SERVICE_ROLE_KEY=test-service-role-key STORAGE_DRIVER=local RATE_LIMIT_RESET_MAX=200`,
+  then `npm run reset-flow:test --prefix server`.
+
+Supabase is also used by this project for the public site (newsletter,
 contact form, published content, storage), so the rest of this file still
 applies.
 

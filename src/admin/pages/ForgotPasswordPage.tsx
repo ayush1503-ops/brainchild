@@ -7,19 +7,23 @@ import { ApiError, authApi } from '../utils/api';
 /**
  * Forgot Password — wired to the studio API (`POST /api/auth/forgot-password`).
  *
- * WHY THIS DOES NOT CALL SUPABASE:
+ * WHY THE BROWSER DOES NOT CALL SUPABASE DIRECTLY:
  * `LoginPage` signs in through `authApi.login()` → `POST /api/auth/login`,
- * which checks a bcrypt hash in the `admin_users` table. Supabase's
- * `auth.resetPasswordForEmail` writes a completely different credential store
- * (`auth.users`), so a Supabase reset link would have let you set a password
- * that the login form could never check. Both endpoints now sit on the same
- * credential store, and the token this issues is consumed by
- * `ResetPasswordPage` at `/admin/reset-password?token=…`.
+ * which checks a bcrypt hash in the `admin_users` table. Calling Supabase's
+ * `auth.resetPasswordForEmail` from here would let you set a password in a
+ * different credential store (`auth.users`) that the login form never checks.
+ *
+ * Instead the API owns the flow: it looks the address up in `admin_users` and
+ * then — when the server is connected to Supabase — asks Supabase Auth to
+ * deliver its recovery email (no SMTP account needed). Opening that link brings
+ * you back to `ResetPasswordPage`, which hands the resulting Supabase session
+ * to the API so it can rotate the *console* password. Without Supabase the API
+ * falls back to its own SMTP/console mailer and a `?token=` link.
  *
  * The API never says whether the address exists — it returns the same message
  * for known and unknown emails so the form can't be used to enumerate studio
- * accounts. `devResetUrl` is only ever populated when `EXPOSE_RESET_LINK` is
- * enabled on a non-production server.
+ * accounts. `devResetUrl` / `devDeliveryError` are only ever populated when
+ * `DEV_EXPOSE_RESET_LINK` is enabled on a non-production server.
  */
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -27,6 +31,7 @@ export const ForgotPasswordPage: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
   const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
+  const [deliveryChannel, setDeliveryChannel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,6 +47,7 @@ export const ForgotPasswordPage: React.FC = () => {
     setSuccessMessage(null);
     setDevResetUrl(null);
     setDeliveryWarning(null);
+    setDeliveryChannel(null);
 
     try {
       const result = await authApi.forgotPassword(trimmed);
@@ -51,6 +57,7 @@ export const ForgotPasswordPage: React.FC = () => {
           `If ${trimmed} belongs to a studio account, a reset link is on its way. It may take a minute and could land in Promotions or Spam.`
       );
       setDevResetUrl(result.devResetUrl ?? null);
+      setDeliveryChannel(result.emailDeliveryChannel ?? null);
 
       // The server can't tell us the email failed for *this* address without
       // leaking account existence — but it can tell us it is not sending any
@@ -58,9 +65,13 @@ export const ForgotPasswordPage: React.FC = () => {
       if (result.emailDeliveryEnabled === false) {
         setDeliveryWarning(
           `This deployment cannot send email (${result.emailDeliveryReason ?? 'mail transport not configured'}). ` +
-            'Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and MAIL_FROM, or reset the password on the ' +
-            'server with `npm run admin:set-password --prefix server`.'
+            'Connect the API to Supabase (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) or configure SMTP_HOST, ' +
+            'SMTP_PORT, SMTP_USER, SMTP_PASSWORD and MAIL_FROM — or reset the password on the server with ' +
+            '`npm run admin:set-password --prefix server`.'
         );
+      } else if (result.devDeliveryError) {
+        // Development servers report the real reason instead of a silent log line.
+        setDeliveryWarning(`The reset email was not sent (dev detail: ${result.devDeliveryError}).`);
       }
     } catch (err) {
       if (err instanceof ApiError) {
@@ -127,6 +138,15 @@ export const ForgotPasswordPage: React.FC = () => {
                   <AlertCircle size={16} className="mt-0.5 shrink-0 text-grape" />
                   {deliveryWarning}
                 </div>
+              )}
+
+              {!deliveryWarning && deliveryChannel === 'supabase' && (
+                <p className="text-left text-[11px] font-semibold leading-relaxed text-inksoft">
+                  The email comes from Supabase Auth (sender <span className="text-ink">noreply@mail.app.supabase.io</span>
+                  {' '}unless custom SMTP is configured). Nothing after a few minutes? Check Spam/Promotions, wait a
+                  minute before retrying — Supabase's built-in mailer allows one email per address per minute and only
+                  a couple per hour, and delivers only to members of the Supabase project unless custom SMTP is set up.
+                </p>
               )}
 
               {devResetUrl && (

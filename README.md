@@ -60,6 +60,9 @@ Useful scripts:
 | `npm run build` | Build API (`server/dist`) + site (`dist`) |
 | `npm run lint` | Typecheck the frontend |
 | `npm run lint:all` | Typecheck frontend **and** API |
+| `npm run security:test --prefix server` | Security regression suite against a running API |
+| `npm run dev:fake-auth --prefix server` | Offline stand-in for Supabase Auth (port 54321) for testing the reset flow |
+| `npm run reset-flow:test --prefix server` | End-to-end admin password-reset test (API pointed at the fake auth) |
 | `npx tsx scripts/vercel-sim.ts` | Simulate the Vercel serverless runtime locally (after `npm run build`) |
 
 ## Deploy to Vercel
@@ -94,9 +97,16 @@ DATABASE_URL="postgresql://..." ADMIN_EMAIL="you@example.com" \
    (runs `0001_init_schema.sql` + `0002_seed.sql`).
 2. Run **`supabase/migrations/0004_add_media_bucket.sql`** in the SQL Editor —
    it creates the public `media` bucket the API uploads into.
-3. After deployment, add your Vercel URL to Supabase
-   *Authentication → URL Configuration* (Site URL + redirect allow-list) so
-   OAuth / password-reset links land on your domain.
+3. Run **`supabase/migrations/0005_add_brainchild_admin.sql`** and
+   **`0006_harden_primary_admin_trigger.sql`** (0006 is required even if 0005
+   was applied earlier — the original trigger blocked creating the primary
+   admin in Supabase Auth).
+4. After deployment, add your domain to Supabase
+   *Authentication → URL Configuration*: Site URL `https://www.brainchildapp.com`
+   and Redirect URL `https://www.brainchildapp.com/admin/reset-password`
+   (plus `http://localhost:3000/admin/reset-password` for local dev). The
+   admin password-reset email is sent by Supabase Auth and comes back to that
+   route.
 
 ### 3. Vercel environment variables
 
@@ -113,11 +123,12 @@ uses `.env.local` as described above.
 
 Redeploy after changing these values: Vite embeds them at build time.
 
-Password recovery for the **admin console** is handled by this project's own
-API, not by Supabase Auth — so no Supabase redirect URL is required for it.
-Set `APP_BASE_URL` to your deployed origin instead; that is what the reset link
-is built from. (Supabase's redirect allow-list only matters for player OAuth /
-magic links on the public site.)
+Password recovery for the **admin console**: the password itself lives in
+this project's own database (`admin_users`), but the reset *email* is sent by
+Supabase Auth using the server-side variables below, so no SMTP account is
+needed. Set `APP_BASE_URL` to your deployed origin — the emailed link redirects
+to `<APP_BASE_URL>/admin/reset-password`, which must be on Supabase's redirect
+allow-list. Full walkthrough: `PASSWORD_RESET_FIX.md`.
 
 Never commit `DATABASE_URL`, database passwords, or service-role/secret keys.
 Set those only in Vercel's environment settings (server-side, without `VITE_`).
@@ -142,23 +153,25 @@ Set those only in Vercel's environment settings (server-side, without `VITE_`).
 | `STORAGE_BUCKET` | `media` (default) |
 | `SERVE_FRONTEND` | `false` (Vercel serves the static build itself) |
 
-**Required in production for password-reset emails** (the admin reset link is
-sent by this API over SMTP; without these the form still replies "a reset link
-is on its way" while nothing is sent, so the page now surfaces
-`emailDeliveryEnabled: false` instead):
+**Password-reset emails.** With `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+set (above), the API asks Supabase Auth to send the reset email — nothing else
+is required on Vercel:
 
 | Variable | Value |
 | --- | --- |
-| `APP_BASE_URL` | your deployed origin, e.g. `https://brainchild.vercel.app` |
-| `SMTP_HOST` | e.g. `smtp.postmarkapp.com` |
-| `SMTP_PORT` | `587` (STARTTLS) or `465` (implicit TLS) |
-| `SMTP_USER` / `SMTP_PASSWORD` | provider credentials |
-| `MAIL_FROM` | `Brainchild Studio <no-reply@yourdomain>` |
+| `APP_BASE_URL` | your deployed origin, e.g. `https://www.brainchildapp.com` |
+| `SUPABASE_ANON_KEY` | same as `VITE_SUPABASE_ANON_KEY` (optional) |
+| `PASSWORD_RESET_CHANNEL` | `auto` (default) · `supabase` · `smtp` |
 
-`nodemailer` is a normal root dependency, so `npm ci` installs it and Vercel's
-function tracing ships it — SMTP works on Vercel, not just in a VM. If the
-transport is misconfigured the API logs `Password reset email was not
-delivered` with the reason, and returns `emailDeliveryEnabled: false`.
+Supabase's built-in mailer only delivers to members of the Supabase
+organisation (2 emails/hour); configure *Authentication → SMTP Settings* in
+the Supabase dashboard to email anyone. If Supabase is not configured (or
+`PASSWORD_RESET_CHANNEL=smtp`) the API sends its own token link over SMTP
+instead — `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`
+(`nodemailer` is a root dependency, so it ships in the Vercel function).
+Whatever the channel, an undelivered email is logged as
+`Password reset email was not delivered` with a `reason`, and a server with no
+channel at all returns `emailDeliveryEnabled: false` so the page can say so.
 
 ### 4. Deploy
 
