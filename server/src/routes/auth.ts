@@ -19,9 +19,14 @@ import {
   checkPasswordPolicy,
   hashPassword,
   randomToken,
+  safeEqual,
   sha256,
   verifyPassword,
 } from '../utils/crypto.js';
+import {
+  temporaryAdminPassword,
+  temporaryPasswordTrackingEnabled,
+} from '../config/temporary-password.js';
 import { audit } from '../services/activity.js';
 import { loginLimiter, passwordResetLimiter } from '../middleware/security.js';
 import { emailSchema } from '../middleware/validate.js';
@@ -154,6 +159,11 @@ router.post(
       throw genericFailure();
     }
 
+    // Is this still the shared TEMPORARY password? The console shows a banner
+    // until it is replaced, so a temporary credential cannot silently linger.
+    const usingTemporaryPassword =
+      temporaryPasswordTrackingEnabled() && safeEqual(password, temporaryAdminPassword());
+
     await db
       .update(adminUsers)
       .set({
@@ -170,7 +180,15 @@ router.post(
       adminUserId: admin.id,
       actorEmail: admin.email,
       summary: `${admin.name ?? admin.email} signed in`,
+      ...(usingTemporaryPassword ? { metadata: { temporaryPassword: true } } : {}),
     });
+
+    if (usingTemporaryPassword) {
+      logger.warn('Signed in with the TEMPORARY admin password — change it in Settings', {
+        adminId: admin.id,
+        email: admin.email,
+      });
+    }
 
     res.json({
       csrfToken: typeof req.cookies?.[CSRF_COOKIE] === 'string' ? req.cookies[CSRF_COOKIE] : undefined,
@@ -181,6 +199,7 @@ router.post(
         role: admin.role,
         permissions: permissionsForRole(admin.role as never),
         lastLoginAt: admin.lastLoginAt,
+        temporaryPasswordInUse: usingTemporaryPassword,
       },
     });
   })
@@ -255,13 +274,24 @@ router.get(
         lastLoginAt: adminUsers.lastLoginAt,
         passwordChangedAt: adminUsers.passwordChangedAt,
         createdAt: adminUsers.createdAt,
+        passwordHash: adminUsers.passwordHash,
       })
       .from(adminUsers)
       .where(eq(adminUsers.id, req.admin!.id))
       .limit(1);
 
     if (!admin) throw new AppError(404, 'Account not found.', 'not_found');
-    res.json({ admin: { ...admin, permissions: req.admin!.permissions } });
+
+    // Verified against the stored hash (never trusted from the client), so the
+    // banner clears the moment a private password is set.
+    const { passwordHash, ...profile } = admin;
+    const temporaryPasswordInUse = temporaryPasswordTrackingEnabled()
+      ? await verifyPassword(temporaryAdminPassword(), passwordHash)
+      : false;
+
+    res.json({
+      admin: { ...profile, permissions: req.admin!.permissions, temporaryPasswordInUse },
+    });
   })
 );
 

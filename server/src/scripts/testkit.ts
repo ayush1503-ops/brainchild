@@ -6,6 +6,8 @@
  * pass/fail summary with a non-zero exit code for CI.
  */
 
+import { temporaryAdminPassword } from '../config/temporary-password.js';
+
 const BASE_URL = process.env.TEST_BASE_URL || `http://127.0.0.1:${process.env.PORT || 3001}`;
 
 export interface ApiResponse<T = any> {
@@ -161,10 +163,10 @@ export function summarize(title: string): number {
 
 export const BASE = BASE_URL;
 export const DEMO = {
-  owner: { email: process.env.ADMIN_EMAIL || 'brainchildgamesin@gmail.com', password: process.env.ADMIN_PASSWORD || 'BrainchildStudio2026' },
-  primary: { email: 'brainchildgamesin@gmail.com', password: process.env.BRAINCHILD_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'BrainchildStudio2026' },
-  manager: { email: 'manager@brainchild.games', password: 'BrainchildStudio2026' },
-  editor: { email: 'editor@brainchild.games', password: 'BrainchildStudio2026' },
+  owner: { email: process.env.ADMIN_EMAIL || 'brainchildgamesin@gmail.com', password: process.env.ADMIN_PASSWORD || temporaryAdminPassword() },
+  primary: { email: 'brainchildgamesin@gmail.com', password: process.env.BRAINCHILD_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || temporaryAdminPassword() },
+  manager: { email: 'manager@brainchild.games', password: temporaryAdminPassword() },
+  editor: { email: 'editor@brainchild.games', password: temporaryAdminPassword() },
 };
 
 export async function apiReachable(): Promise<boolean> {

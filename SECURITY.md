@@ -99,7 +99,7 @@ Powered by `helmet` middleware:
 
 Before deploying to production:
 - [ ] Set strong, unique secrets in `server/.env`: `JWT_SECRET`, `JWT_REFRESH_SECRET` (min 32 characters).
-- [ ] Change the dev-default Super Admin password from `BrainchildStudio2026` (or whatever `ADMIN_PASSWORD` you seeded with).
+- [ ] Change the temporary Super Admin password from `Brainchild@2026` (or whatever `ADMIN_PASSWORD` / `TEMPORARY_ADMIN_PASSWORD` you seeded with). The console warns with a banner and the API reports `temporaryPasswordInUse: true` until it is changed — see `TEMPORARY_PASSWORD.md`.
 - [ ] Verify `NODE_ENV=production` so secure cookies require HTTPS.
 - [ ] Ensure HTTPS SSL/TLS certificate is active.
 - [ ] Verify CORS `FRONTEND_URL` is set strictly to your production domain.

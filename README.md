@@ -47,8 +47,8 @@ storage.
    ```
    Sign in at `http://localhost:3000/admin/login`
    - **Email:** `brainchildgamesin@gmail.com` (always valid SUPER_ADMIN)
-   - **Password:** `BrainchildStudio2026` in dev (or `ADMIN_PASSWORD` / `BRAINCHILD_ADMIN_PASSWORD` env var)
-   - After first login, change password in **Settings → Change Your Password** (min 12 chars). Other sessions are revoked automatically.
+   - **Password:** `Brainchild@2026` — the shared **temporary** password (or `ADMIN_PASSWORD` / `BRAINCHILD_ADMIN_PASSWORD` env var)
+   - After first login, change password in **Settings → Change Your Password** (min 12 chars). Other sessions are revoked automatically. Until it is changed, the console shows a temporary-password warning banner — see `TEMPORARY_PASSWORD.md`.
 
 Useful scripts:
 
@@ -146,6 +146,8 @@ Set those only in Vercel's environment settings (server-side, without `VITE_`).
 | `NODE_ENV` | `production` |
 | `JWT_SECRET` | 32+ chars (`openssl rand -hex 32`) |
 | `JWT_REFRESH_SECRET` | 32+ chars (different from above) |
+| `ADMIN_EMAIL` | `brainchildgamesin@gmail.com` (primary `SUPER_ADMIN`) |
+| `ADMIN_PASSWORD` | `Brainchild@2026` — the **temporary** console password (`TEMPORARY_PASSWORD.md`); replace with your own when you are done setting up |
 | `FRONTEND_ORIGIN` | your Vercel URL (same-origin, but CSRF/origin checks use it) |
 | `STORAGE_DRIVER` | `supabase` |
 | `SUPABASE_URL` | same project URL as `VITE_SUPABASE_URL` |
@@ -240,3 +242,12 @@ build). If you're on Pro or Enterprise and need longer-running requests
   `supabase/migrations/0001_init_schema.sql`); the service-role key is used
   server-side only for media uploads.
 - Full details in `SECURITY.md`.
+
+## Documentation map
+
+| File | What it covers |
+| --- | --- |
+| `TEMPORARY_PASSWORD.md` | The shared temporary admin password `Brainchild@2026`: where it comes from, how to install/rotate it, how the console warns you while it is still in use |
+| `ADMIN_SETUP.md` | Primary admin account, environments, changing the password, testing login |
+| `PASSWORD_RESET_FIX.md` | Why the reset email is sent through Supabase Auth and how to make it arrive |
+| `SECURITY.md` | Threat model, controls and the production checklist |

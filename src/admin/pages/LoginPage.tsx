@@ -173,6 +173,27 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
+          {/*
+            Development-only sign-in reminder. Production builds leave
+            `import.meta.env.DEV` false, so the shared temporary password is
+            never printed on the deployed login page.
+          */}
+          {import.meta.env.DEV && (
+            <div className="mt-6 rounded-xl border-2 border-dashed border-grape/40 bg-grape/5 px-4 py-3 text-center">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-grape">
+                Temporary password
+              </p>
+              <p className="mt-1 text-xs font-semibold text-ink">
+                <span className="font-mono">brainchildgamesin@gmail.com</span>
+                {' · '}
+                <span className="font-mono">Brainchild@2026</span>
+              </p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-ink/50">
+                Dev only · change it in Settings after signing in
+              </p>
+            </div>
+          )}
+
           <div className="mt-6 text-center">
             <p className="text-xs font-medium text-inksoft">
               Brainchild Games — Independent Studio Admin

@@ -28,10 +28,13 @@ import {
 import { textToHtml } from '../src/utils/sanitize.js';
 import { hashPassword } from '../src/utils/crypto.js';
 import { CONTENT_DEFAULTS, SETTING_DEFAULTS } from '../src/services/cms.js';
+import { temporaryAdminPassword } from '../src/config/temporary-password.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = process.env.NODE_ENV === 'production';
-const DEV_PASSWORD = 'BrainchildStudio2026';
+// Shared temporary password (see src/config/temporary-password.ts). Used for the
+// primary admin when ADMIN_PASSWORD is unset, and for the local demo accounts.
+const DEV_PASSWORD = temporaryAdminPassword();
 
 interface SeedContent {
   games: any[];

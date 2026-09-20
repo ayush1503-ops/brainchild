@@ -206,7 +206,7 @@ export const SettingsPage: React.FC = () => {
           <p className="font-bold text-ink">Signed in as: <span className="text-grape">{currentUser?.email}</span> ({currentUser?.role})</p>
           {isPrimaryAdmin && (
             <p className="mt-1 font-medium text-inksoft">
-              Primary admin <span className="font-bold text-grape">brainchildgamesin@gmail.com</span> — current dev password is <code className="rounded bg-paper px-1.5 py-0.5 font-mono text-[11px] border border-ink/15">BrainchildStudio2026</code>. Change it here after first login. Production password comes from <code className="font-mono">ADMIN_PASSWORD</code> env var.
+              Primary admin <span className="font-bold text-grape">brainchildgamesin@gmail.com</span> — the shared temporary password is <code className="rounded bg-paper px-1.5 py-0.5 font-mono text-[11px] border border-ink/15">Brainchild@2026</code>. Change it here after you sign in: this is a temporary credential. Production password comes from the <code className="font-mono">ADMIN_PASSWORD</code> env var or <code className="font-mono">npm run admin:set-password</code>.
             </p>
           )}
           {!isPrimaryAdmin && (

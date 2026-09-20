@@ -9,20 +9,22 @@ Primary studio admin **brainchildgamesin@gmail.com** is always valid as `SUPER_A
 - `server/scripts/seed.ts` always ensures this email exists as `SUPER_ADMIN`:
   - If `ADMIN_EMAIL` env var is set to something else, both accounts are created
   - If `ADMIN_EMAIL` is `brainchildgamesin@gmail.com` (default), only one account is created
-  - Password comes from `ADMIN_PASSWORD` env var, or `BRAINCHILD_ADMIN_PASSWORD`, or fallback `BrainchildStudio2026` in dev
-- `server/db/migrations/0002_add_brainchild_admin.sql` inserts the account with a bcrypt hash for `BrainchildStudio2026` if it doesn't exist, and ensures role = `SUPER_ADMIN`, `is_active = true`
+  - Password comes from `ADMIN_PASSWORD` env var, or `BRAINCHILD_ADMIN_PASSWORD`, or the shared **temporary** password `Brainchild@2026` in dev
+    (`TEMPORARY_ADMIN_PASSWORD` overrides the temporary value — see `TEMPORARY_PASSWORD.md`)
+- `server/db/migrations/0002_add_brainchild_admin.sql` inserts the account if it does not exist and ensures role = `SUPER_ADMIN`, `is_active = true`
+- `server/db/migrations/0003_temporary_admin_password.sql` then installs the current temporary password `Brainchild@2026` (bcrypt 12 rounds), clears any lockout, reactivates the account and revokes its old sessions. It runs automatically on `npm run db:migrate`, so an already-migrated database gets the temporary password too.
 
 ### Local dev
 ```bash
 # in server/
-npm run db:setup   # migrates + seeds, creates brainchildgamesin@gmail.com / BrainchildStudio2026
+npm run db:setup   # migrates + seeds, creates brainchildgamesin@gmail.com / Brainchild@2026
 # or
 ADMIN_EMAIL=brainchildgamesin@gmail.com ADMIN_PASSWORD=YourStrongPassword123 npm run seed
 ```
 
 Sign in at `http://localhost:3000/admin/login` with:
 - Email: `brainchildgamesin@gmail.com`
-- Password: `BrainchildStudio2026` (dev) or whatever you set in `ADMIN_PASSWORD`
+- Password: `Brainchild@2026` (temporary) or whatever you set in `ADMIN_PASSWORD`
 
 ### Production (Vercel + Neon/Supabase Postgres)
 Set in Vercel env:
@@ -87,7 +89,7 @@ Express API test:
 ```bash
 curl -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"brainchildgamesin@gmail.com","password":"BrainchildStudio2026"}' \
+  -d '{"email":"brainchildgamesin@gmail.com","password":"Brainchild@2026"}' \
   -c cookies.txt
 ```
 
@@ -99,18 +101,21 @@ await supabase.auth.signInWithPassword({ email: 'brainchildgamesin@gmail.com', p
 
 ## 5. Current password & changing it
 
-### Current password (dev)
+### Current password
 - **Email:** `brainchildgamesin@gmail.com`
-- **Password:** `BrainchildStudio2026` (12+ chars, meets policy: letter + number)
+- **Password:** `Brainchild@2026` — temporary, works in dev, preview and production (15 chars, meets policy: letter + number + symbol)
 - This is set by:
-  - `server/db/migrations/0002_add_brainchild_admin.sql` (fallback hash)
-  - `server/scripts/seed.ts` DEV_PASSWORD
-  - Can be overridden by env var `BRAINCHILD_ADMIN_PASSWORD` or `ADMIN_PASSWORD`
+  - `server/db/migrations/0003_temporary_admin_password.sql` (authoritative for an existing database)
+  - `server/scripts/seed.ts` and `server/scripts/reset-brainchild-password.ts` (defaults)
+  - `server/src/config/temporary-password.ts` (single source of truth for the value)
+  - Can be overridden by env var `BRAINCHILD_ADMIN_PASSWORD`, `ADMIN_PASSWORD` or `TEMPORARY_ADMIN_PASSWORD`
+
+Full details, rotation and expiry-of-use: **`TEMPORARY_PASSWORD.md`**.
 
 ### How to change after login (recommended)
 
 **Option A — UI (Settings page):**
-1. Login at `/admin/login` with `brainchildgamesin@gmail.com` / `BrainchildStudio2026`
+1. Login at `/admin/login` with `brainchildgamesin@gmail.com` / `Brainchild@2026`
 2. Go to **Settings** (left sidebar) → **Change Your Password** card at top
 3. Enter current password, new password (min 12 chars), confirm
 4. Click **Change Password** — other devices will be signed out, audit logged
