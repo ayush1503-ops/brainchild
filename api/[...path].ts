@@ -32,6 +32,17 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import app from '../server/dist/index.js';
 import { closeDatabase, databaseHealth } from '../server/dist/db/index.js';
 
+function requestPath(req: IncomingMessage): string {
+  const rawUrl = req.url ?? '/';
+  try {
+    return new URL(rawUrl, 'http://vercel.internal').pathname;
+  } catch {
+    // IncomingMessage.url is normally an origin-form path, but keeping a
+    // conservative fallback makes the health check safe for unusual runtimes.
+    return rawUrl.split('?')[0] || '/';
+  }
+}
+
 /** Report a shallow health status on GET /api/health (used by uptime monitors). */
 function handleHealth(_req: IncomingMessage, res: ServerResponse): void {
   void (async () => {
@@ -74,7 +85,11 @@ process.on('SIGTERM', () => {
  */
 const handler = (req: IncomingMessage, res: ServerResponse): void => {
   // The Vercel runtime hands us raw Node streams; Express reads them directly.
-  if (req.method === 'GET' && req.url === '/health') {
+  // Catch both forms because Vercel normally keeps the /api prefix in
+  // IncomingMessage.url, while the local simulation and some adapters strip
+  // it before invoking the catch-all function.
+  const path = requestPath(req);
+  if (req.method === 'GET' && (path === '/health' || path === '/api/health')) {
     handleHealth(req, res);
     return;
   }

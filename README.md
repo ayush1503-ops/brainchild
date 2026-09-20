@@ -179,8 +179,8 @@ The build (see `vercel.json`) runs:
 
 Everything else is automatic:
 
-- `dist/` → static site, `/(.*)` rewrites to `index.html` for client routing
-- `api/[...path].ts` → serverless function for every `/api/*` request
+- `dist/` → static site; the SPA fallback rewrites non-API paths to `index.html`
+- `api/[...path].ts` → serverless function for every `/api/*` request (the SPA fallback explicitly excludes `/api` so it cannot swallow API calls)
   (the API's runtime dependencies are traced from the root `node_modules`,
   so no `includeFiles` are needed)
 - security headers (CSP, X-Frame-Options, …) are set in `vercel.json`
