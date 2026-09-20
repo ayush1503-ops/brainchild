@@ -1,30 +1,67 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2, MailCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ApiError, authApi } from '../utils/api';
+import { useSupabaseAuth } from '../../context/SupabaseAuthContext';
+import { describeAuthCallbackError } from '../../lib/supabase';
 
 /**
- * Reset Password — consumes the one-time token from the reset email.
+ * Reset Password — the landing page of the reset email.
  *
- * The link produced by `POST /api/auth/forgot-password` looks like:
- *   /admin/reset-password?token=<48-byte random token>
+ * Two kinds of link arrive here, and both end in the same API call:
  *
- * On submit we POST `{ token, newPassword }` to `/api/auth/reset-password`,
- * which verifies the SHA-256 token hash, enforces the server password policy
- * (12+ chars, a letter and a number — see `checkPasswordPolicy`), rotates the
- * password in `admin_users` and revokes every existing session.
+ * 1. Supabase Auth (default when the API has SUPABASE_URL + service key).
+ *    `POST /api/auth/forgot-password` asks Supabase to email its recovery
+ *    link. Opening it verifies the token at Supabase, which redirects back to
+ *    `/admin/reset-password#access_token=…&type=recovery`. The Supabase SDK
+ *    turns that into a session (`useSupabaseAuth().session`) and we send its
+ *    access token to `POST /api/auth/reset-password` as
+ *    `{ supabaseAccessToken, newPassword }`. The API checks the session with
+ *    Supabase, confirms it was created from a recovery email, matches the
+ *    email to an admin account and rotates `admin_users.password_hash`.
  *
- * Client-side checks below mirror that policy so the user gets feedback before
- * a round trip, but the server remains the authority.
+ * 2. SMTP / console mailer (when Supabase is not configured on the API).
+ *    The link looks like `/admin/reset-password?token=<48-byte token>` and
+ *    we post `{ token, newPassword }` instead.
+ *
+ * Either way the server enforces the password policy (12+ chars, a letter and
+ * a number — see `checkPasswordPolicy`), and revokes every existing session.
+ * The checks below mirror that policy so the user gets feedback before a round
+ * trip, but the server remains the authority.
  */
 const MIN_PASSWORD_LENGTH = 12;
+
+type Proof = { kind: 'token'; token: string } | { kind: 'supabase'; accessToken: string } | { kind: 'none' };
 
 export const ResetPasswordPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { session, loading: supabaseLoading, configured: supabaseConfigured, passwordRecovery, signOut } =
+    useSupabaseAuth();
 
-  const token = searchParams.get('token') ?? '';
+  const legacyToken = searchParams.get('token') ?? '';
+  /** Missing or truncated tokens can never validate — say so up front. */
+  const hasLegacyToken = legacyToken.length >= 20;
+
+  /** Supabase reported a problem with the link (expired, already used…). */
+  const callbackError = useMemo(() => describeAuthCallbackError(), []);
+
+  const proof: Proof = useMemo(() => {
+    if (hasLegacyToken) return { kind: 'token', token: legacyToken };
+    // Any Supabase session is *offered* as proof so a page reload after the
+    // link was opened still works (the SDK strips the URL fragment and keeps
+    // the session in storage). The server is the authority: it only accepts a
+    // session created from a recovery email within the last hour, so a plain
+    // sign-in session is rejected with a clear message.
+    if (session?.access_token) return { kind: 'supabase', accessToken: session.access_token };
+    return { kind: 'none' };
+  }, [hasLegacyToken, legacyToken, session?.access_token]);
+
+  // While the Supabase SDK is still reading the session out of the URL we
+  // don't know yet whether this page has a valid proof — show a spinner rather
+  // than a premature "invalid link" screen.
+  const resolvingProof = !hasLegacyToken && supabaseConfigured && supabaseLoading && !callbackError;
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -33,8 +70,9 @@ export const ResetPasswordPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  /** Missing or truncated tokens can never validate — say so up front. */
-  const hasToken = token.length >= 20;
+  useEffect(() => {
+    if (callbackError) setError(callbackError);
+  }, [callbackError]);
 
   const policyHint = useMemo(() => {
     if (!newPassword) return null;
@@ -48,7 +86,7 @@ export const ResetPasswordPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!hasToken) {
+    if (proof.kind === 'none') {
       setError('This reset link is invalid or has expired. Please request a new one.');
       return;
     }
@@ -65,13 +103,20 @@ export const ResetPasswordPage: React.FC = () => {
     setError(null);
 
     try {
-      const result = await authApi.resetPassword(token, newPassword);
+      await authApi.resetPassword(
+        proof.kind === 'token' ? { token: proof.token } : { supabaseAccessToken: proof.accessToken },
+        newPassword
+      );
       setIsSuccess(true);
-      if (result.message) setError(null);
+      // The recovery session has served its purpose; drop it on this device too
+      // (the API already revoked it at Supabase — this just clears local storage).
+      if (proof.kind === 'supabase') void signOut();
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 429) {
           setError('Too many attempts. Please wait a minute and try again.');
+        } else if (err.status === 503) {
+          setError(err.message || 'The studio server cannot verify the link right now. Please try again shortly.');
         } else if (err.fields.length > 0) {
           setError(err.fields.map((field) => field.message).join(' '));
         } else {
@@ -130,8 +175,24 @@ export const ResetPasswordPage: React.FC = () => {
                 Go to Sign In
               </button>
             </div>
-          ) : hasToken ? (
+          ) : resolvingProof ? (
+            <div className="flex flex-col items-center gap-3 py-6 text-sm font-semibold text-inksoft" role="status">
+              <Loader2 className="animate-spin text-grape" size={28} />
+              Verifying your reset link…
+            </div>
+          ) : proof.kind !== 'none' ? (
             <form onSubmit={handleSubmit} className="space-y-5">
+              {proof.kind === 'supabase' && session?.user?.email && (
+                <div className="flex items-start gap-2 rounded-xl border-2 border-moss/40 bg-moss/10 px-4 py-3 text-xs font-semibold text-ink">
+                  <MailCheck size={16} className="mt-0.5 shrink-0 text-moss" />
+                  <span>
+                    {passwordRecovery ? 'Reset link verified for ' : 'Reset session found for '}
+                    <span className="text-grape">{session.user.email}</span>. Choose the new password for the studio
+                    admin console below.
+                  </span>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <label htmlFor="new-password" className="text-[11px] font-extrabold uppercase tracking-widest text-inksoft">
                   New Password (min {MIN_PASSWORD_LENGTH} chars)
@@ -217,7 +278,9 @@ export const ResetPasswordPage: React.FC = () => {
           ) : (
             <div className="space-y-4 text-center">
               <div className="rounded-xl border-2 border-ink/15 bg-paper/60 px-4 py-3 text-sm font-semibold text-inksoft">
-                This page needs a reset link from your email. Request a new one and open the link it sends.
+                {callbackError
+                  ? 'Reset links can only be used once and expire after a short while.'
+                  : 'This page needs a reset link from your email. Request a new one and open the link it sends.'}
               </div>
               <Link
                 to="/admin/forgot-password"

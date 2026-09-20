@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { StudioProvider, useStudio } from './context/StudioContext';
-import { SupabaseAuthProvider } from './context/SupabaseAuthContext';
+import { SupabaseAuthProvider, PasswordRecoveryRedirect } from './context/SupabaseAuthContext';
 
 // Public site components
 import { Navbar } from './components/navigation/Navbar';
@@ -101,6 +101,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <SupabaseAuthProvider>
+        {/* A password-reset email link that lands anywhere on the site is carried to the reset screen. */}
+        <PasswordRecoveryRedirect />
         <Suspense fallback={<AdminLoading />}>
         <Routes>
           {/* Admin Authentication Routes */}

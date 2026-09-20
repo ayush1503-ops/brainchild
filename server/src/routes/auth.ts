@@ -26,6 +26,15 @@ import { audit } from '../services/activity.js';
 import { loginLimiter, passwordResetLimiter } from '../middleware/security.js';
 import { emailSchema } from '../middleware/validate.js';
 import { mailTransportReady, passwordResetEmail, sendMail } from '../services/mailer.js';
+import {
+  ensureSupabaseAuthUser,
+  generateSupabaseRecoveryLink,
+  revokeSupabaseSession,
+  sendSupabaseRecoveryEmail,
+  supabaseAuthReady,
+  supabaseRecoveryRedirectUrl,
+  verifySupabaseRecoverySession,
+} from '../services/supabase-auth.js';
 import { logger } from '../utils/logger.js';
 import { permissionsForRole } from '../services/permissions.js';
 
@@ -399,6 +408,29 @@ router.post(
   })
 );
 
+/**
+ * Which service will carry the reset email for this deployment. Computed from
+ * configuration only (never from the address), so it is safe to return to an
+ * anonymous caller.
+ */
+function resetDeliveryPlan(): {
+  channel: 'supabase' | 'smtp' | 'console' | 'none';
+  ready: boolean;
+  reason?: string;
+} {
+  const supabase = supabaseAuthReady();
+  const mailer = mailTransportReady();
+
+  if (supabase.ready) return { channel: 'supabase', ready: true };
+  if (mailer.ready) return { channel: mailer.transport === 'console' ? 'console' : 'smtp', ready: true };
+
+  const reason =
+    config.passwordReset.channel === 'supabase'
+      ? 'supabase_auth_not_configured'
+      : mailer.reason ?? (supabase.ready ? undefined : supabase.reason) ?? 'unknown';
+  return { channel: 'none', ready: false, reason };
+}
+
 /** POST /api/auth/forgot-password */
 router.post(
   '/forgot-password',
@@ -406,16 +438,17 @@ router.post(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { email } = z.object({ email: emailSchema }).strict().parse(req.body);
 
-    // Mail readiness is a property of the deployment, not of the address, so it
-    // is computed before the lookup and included on *every* response path —
-    // including the unknown-address one. If the key only appeared for existing
-    // accounts, its presence would itself identify which emails have a studio
-    // account, defeating the anti-enumeration design of this endpoint.
-    const mailer = mailTransportReady();
+    // Delivery readiness is a property of the deployment, not of the address,
+    // so it is computed before the lookup and included on *every* response
+    // path — including the unknown-address one. If the key only appeared for
+    // existing accounts, its presence would itself identify which emails have
+    // a studio account, defeating the anti-enumeration design of this endpoint.
+    const plan = resetDeliveryPlan();
     const genericResponse = {
       message: 'If that email belongs to a studio account, a reset link is on its way.',
-      emailDeliveryEnabled: mailer.ready,
-      ...(mailer.ready ? {} : { emailDeliveryReason: mailer.reason ?? 'unknown' }),
+      emailDeliveryEnabled: plan.ready,
+      emailDeliveryChannel: plan.channel,
+      ...(plan.ready ? {} : { emailDeliveryReason: plan.reason ?? 'unknown' }),
     };
 
     const [admin] = await db.select().from(adminUsers).where(findByEmail(email)).limit(1);
@@ -424,6 +457,71 @@ router.post(
       res.json(genericResponse);
       return;
     }
+
+    /* ----------------------- channel 1: Supabase Auth ---------------------- */
+    if (plan.channel === 'supabase') {
+      // Outstanding SMTP-style tokens are retired so only the newest link works.
+      await db
+        .update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(and(eq(passwordResetTokens.adminUserId, admin.id), isNull(passwordResetTokens.usedAt)));
+
+      const redirectTo = supabaseRecoveryRedirectUrl();
+      const ensured = await ensureSupabaseAuthUser(admin.email, admin.name);
+
+      let delivered = false;
+      let failureReason: string | undefined = ensured.ok ? undefined : `create_user_failed:${ensured.reason}`;
+      let devResetUrl: string | undefined;
+
+      if (ensured.ok) {
+        if (config.exposeResetLink) {
+          // Dev: mint the link instead of emailing it — keeps local testing
+          // under Supabase's built-in mailer cap (2 emails/hour).
+          const minted = await generateSupabaseRecoveryLink(admin.email, redirectTo);
+          if (minted.link) {
+            devResetUrl = minted.link;
+            delivered = true;
+            logger.info('Password reset link (dev, Supabase generate_link)', { to: admin.email, link: minted.link });
+          } else {
+            failureReason = `generate_link_failed:${minted.reason}`;
+          }
+        } else {
+          const sent = await sendSupabaseRecoveryEmail(admin.email, redirectTo);
+          delivered = sent.delivered;
+          if (!sent.delivered) failureReason = [sent.reason, sent.detail].filter(Boolean).join(': ');
+        }
+      }
+
+      audit(req)('PASSWORD_RESET_REQUESTED', 'auth', {
+        adminUserId: admin.id,
+        actorEmail: admin.email,
+        summary: `Reset link ${delivered ? 'sent' : 'NOT sent'} to ${admin.email} via Supabase Auth`,
+        metadata: { channel: 'supabase', delivered, ...(failureReason ? { reason: failureReason } : {}) },
+      });
+      logger.info('Password reset requested', { adminId: admin.id, channel: 'supabase', delivered });
+
+      // The body can never reveal whether this address has an account, so a
+      // failed send is never surfaced as an error for it — it is logged (and
+      // audited) instead. Development builds do get the detail back.
+      if (!delivered) {
+        logger.error('Password reset email was not delivered', {
+          adminId: admin.id,
+          channel: 'supabase',
+          reason: failureReason,
+          redirectTo,
+        });
+      }
+
+      res.json({
+        ...genericResponse,
+        ...(config.exposeResetLink
+          ? { ...(devResetUrl ? { devResetUrl } : {}), ...(failureReason ? { devDeliveryError: failureReason } : {}) }
+          : {}),
+      });
+      return;
+    }
+
+    /* ---------------------- channel 2: SMTP / console ---------------------- */
 
     // Invalidate outstanding tokens before issuing a new one.
     await db
@@ -446,10 +544,10 @@ router.post(
       adminUserId: admin.id,
       actorEmail: admin.email,
       summary: `Reset link generated for ${admin.email}`,
-      metadata: { delivered: delivery.delivered },
+      metadata: { channel: plan.channel, delivered: delivery.delivered },
     });
 
-    logger.info('Password reset requested', { adminId: admin.id, delivered: delivery.delivered });
+    logger.info('Password reset requested', { adminId: admin.id, channel: plan.channel, delivered: delivery.delivered });
 
     // The body can never reveal whether this address has an account, so a
     // failed send is never surfaced as an error for it — it is logged instead.
@@ -457,8 +555,8 @@ router.post(
       logger.error('Password reset email was not delivered', {
         adminId: admin.id,
         reason: delivery.reason,
-        mailerReason: mailer.reason,
-        transport: mailer.transport,
+        mailerReason: plan.reason,
+        transport: plan.channel,
       });
     }
 
@@ -470,53 +568,133 @@ router.post(
   })
 );
 
+/**
+ * Rotates an admin's console password and ends everything that depended on
+ * the old one. Shared by both reset proofs (SMTP token / Supabase session).
+ */
+async function completePasswordReset(
+  req: AuthRequest,
+  target: { id: string; email: string | null; name: string | null },
+  newPassword: string,
+  proof: { kind: 'token' } | { kind: 'supabase'; method: string; supabaseUserId: string }
+): Promise<void> {
+  const policy = checkPasswordPolicy(newPassword, [target.email ?? '', target.name ?? '']);
+  if (!policy.ok) throw new AppError(400, policy.problems.join(' '), 'weak_password', policy.problems);
+
+  const passwordHash = await hashPassword(newPassword);
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(adminUsers)
+      .set({ passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null })
+      .where(eq(adminUsers.id, target.id));
+
+    // Whichever proof was used, no outstanding reset token survives it.
+    await tx
+      .update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(and(eq(passwordResetTokens.adminUserId, target.id), isNull(passwordResetTokens.usedAt)));
+
+    // Every existing session dies with the old password.
+    await tx
+      .update(adminSessions)
+      .set({ revokedAt: new Date(), revokedReason: 'password_reset' })
+      .where(and(eq(adminSessions.adminUserId, target.id), isNull(adminSessions.revokedAt)));
+
+    await tx.insert(adminActivity).values({
+      adminUserId: target.id,
+      actorEmail: target.email,
+      action: 'PASSWORD_RESET_COMPLETED',
+      entityType: 'auth',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')?.slice(0, 400),
+      metadata:
+        proof.kind === 'supabase'
+          ? { channel: 'supabase', method: proof.method, supabaseUserId: proof.supabaseUserId }
+          : { channel: 'token' },
+    });
+  });
+}
+
 /** POST /api/auth/reset-password */
 router.post(
   '/reset-password',
   passwordResetLimiter,
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    // Exactly one proof of identity is accepted per request:
+    //  - `token`               the one-time token from an SMTP/console reset email
+    //  - `supabaseAccessToken` the session Supabase created when the emailed
+    //                          recovery link was opened
     const schema = z
-      .object({ token: z.string().min(20).max(200), newPassword: passwordSchema })
-      .strict();
-    const { token, newPassword } = schema.parse(req.body);
+      .object({
+        token: z.string().min(20).max(200).optional(),
+        supabaseAccessToken: z.string().min(20).max(4096).optional(),
+        newPassword: passwordSchema,
+      })
+      .strict()
+      .refine((body) => Boolean(body.token) !== Boolean(body.supabaseAccessToken), {
+        message: 'Provide either a reset token or a Supabase recovery session.',
+        path: ['token'],
+      });
+    const { token, supabaseAccessToken, newPassword } = schema.parse(req.body);
 
+    const invalidLink = () => new AppError(400, 'That reset link is invalid or has expired.', 'invalid_reset_token');
+
+    /* --------------------- proof A: Supabase recovery session --------------------- */
+    if (supabaseAccessToken) {
+      if (!config.supabaseUrl || !config.supabaseServiceRoleKey) {
+        throw new AppError(503, 'Password reset via Supabase is not configured on this server.', 'reset_channel_unavailable');
+      }
+
+      const session = await verifySupabaseRecoverySession(supabaseAccessToken);
+      if (!session.ok) {
+        if (session.reason === 'network_error') {
+          throw new AppError(503, 'Could not verify the reset link right now. Please try again.', 'reset_verify_unavailable');
+        }
+        if (session.reason === 'not_recovery_session') {
+          throw new AppError(
+            400,
+            'This session was not opened from a reset email. Please use the link we sent you.',
+            'invalid_reset_token'
+          );
+        }
+        throw invalidLink();
+      }
+
+      const [admin] = await db.select().from(adminUsers).where(findByEmail(session.email)).limit(1);
+      // An unknown or deactivated admin is indistinguishable from a bad link.
+      if (!admin || !admin.isActive) throw invalidLink();
+
+      await completePasswordReset(req, admin, newPassword, {
+        kind: 'supabase',
+        method: session.method,
+        supabaseUserId: session.userId,
+      });
+
+      // The recovery session has done its job; do not leave it usable.
+      void revokeSupabaseSession(supabaseAccessToken);
+
+      clearSessionCookies(res);
+      res.json({ ok: true, message: 'Password updated. You can sign in now.' });
+      return;
+    }
+
+    /* -------------------------- proof B: one-time token -------------------------- */
     const record = await db.query.passwordResetTokens.findFirst({
-      where: eq(passwordResetTokens.tokenHash, sha256(token)),
+      where: eq(passwordResetTokens.tokenHash, sha256(token!)),
       with: { adminUser: { columns: { id: true, email: true, name: true, isActive: true } } },
     });
 
-    if (!record || record.usedAt || record.expiresAt < new Date()) {
-      throw new AppError(400, 'That reset link is invalid or has expired.', 'invalid_reset_token');
+    if (!record || record.usedAt || record.expiresAt < new Date() || !record.adminUser?.isActive) {
+      throw invalidLink();
     }
 
-    const policy = checkPasswordPolicy(newPassword, [record.adminUser?.email ?? '', record.adminUser?.name ?? '']);
-    if (!policy.ok) throw new AppError(400, policy.problems.join(' '), 'weak_password', policy.problems);
-
-    const passwordHash = await hashPassword(newPassword);
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(adminUsers)
-        .set({ passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null })
-        .where(eq(adminUsers.id, record.adminUserId));
-
-      await tx.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, record.id));
-
-      // Every existing session dies with the old password.
-      await tx
-        .update(adminSessions)
-        .set({ revokedAt: new Date(), revokedReason: 'password_reset' })
-        .where(and(eq(adminSessions.adminUserId, record.adminUserId), isNull(adminSessions.revokedAt)));
-
-      await tx.insert(adminActivity).values({
-        adminUserId: record.adminUserId,
-        actorEmail: record.adminUser?.email ?? null,
-        action: 'PASSWORD_RESET_COMPLETED',
-        entityType: 'auth',
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent')?.slice(0, 400),
-      });
-    });
+    await completePasswordReset(
+      req,
+      { id: record.adminUserId, email: record.adminUser?.email ?? null, name: record.adminUser?.name ?? null },
+      newPassword,
+      { kind: 'token' }
+    );
 
     clearSessionCookies(res);
     res.json({ ok: true, message: 'Password updated. You can sign in now.' });

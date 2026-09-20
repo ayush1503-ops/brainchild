@@ -48,6 +48,36 @@ function devFallback(name: string, fallback: string): string {
 const DEV_DATABASE_URL =
   'postgresql://brainchild:brainchild@127.0.0.1:55432/brainchild_games?schema=public';
 
+/**
+ * Public origin the password-reset link points back to.
+ *
+ * Resolution order (first non-empty wins):
+ *   1. APP_BASE_URL                      – explicit, always preferred
+ *   2. FRONTEND_ORIGIN (first entry)     – already the deployed site in production
+ *   3. VERCEL_PROJECT_PRODUCTION_URL     – injected by Vercel (production domain)
+ *   4. VERCEL_URL                        – injected by Vercel (deployment URL)
+ *   5. http://localhost:3000             – local development
+ *
+ * Only environment values are used, never the incoming Host/Origin header: a
+ * reset link built from request headers is the classic host-header-injection
+ * password-reset vulnerability.
+ */
+function resolveAppBaseUrl(): string {
+  const explicit = process.env.APP_BASE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  const firstOrigin = process.env.FRONTEND_ORIGIN?.split(',')[0]?.trim();
+  if (firstOrigin && !(isProduction && /localhost|127\.0\.0\.1/.test(firstOrigin))) {
+    return firstOrigin.replace(/\/$/, '');
+  }
+
+  const vercelHost =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || process.env.VERCEL_URL?.trim();
+  if (vercelHost) return `https://${vercelHost.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
+
+  return 'http://localhost:3000';
+}
+
 export const config = {
   env: isProduction ? 'production' : optional(process.env.NODE_ENV, 'development'),
   isProduction,
@@ -106,6 +136,12 @@ export const config = {
   ),
   supabaseUrl: process.env.SUPABASE_URL?.trim() || '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || '',
+  /**
+   * Publishable/anon key. Optional on the server: it is only used as the
+   * `apikey` for the public `/auth/v1/recover` call so that request looks
+   * exactly like one made from the browser. Falls back to the service-role key.
+   */
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY?.trim() || '',
   storageBucket: optional(process.env.STORAGE_BUCKET, 'media'),
 
   // --- mail ---------------------------------------------------------------
@@ -116,7 +152,31 @@ export const config = {
     smtpPort: Number(optional(process.env.SMTP_PORT, '587')),
     smtpUser: process.env.SMTP_USER?.trim(),
     smtpPassword: process.env.SMTP_PASSWORD,
-    appBaseUrl: optional(process.env.APP_BASE_URL, 'http://localhost:3000').replace(/\/$/, ''),
+    appBaseUrl: resolveAppBaseUrl(),
+  },
+
+  // --- admin password reset -----------------------------------------------
+  passwordReset: {
+    /**
+     * Who delivers the "reset your password" email:
+     *  - `auto` (default): Supabase Auth when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+     *                      are set, otherwise the SMTP/console mailer above.
+     *  - `supabase`:       always Supabase Auth (the form reports delivery as
+     *                      unavailable if it is not configured).
+     *  - `smtp`:           never Supabase — always the SMTP/console mailer.
+     *
+     * The credential itself always stays in `admin_users.password_hash`;
+     * Supabase only carries the email and proves the recipient opened it.
+     */
+    channel: optional(process.env.PASSWORD_RESET_CHANNEL, 'auto').toLowerCase(),
+    /** SPA route the Supabase recovery link redirects back to. */
+    supabaseRedirectPath: '/admin/reset-password',
+    /**
+     * A Supabase recovery session older than this cannot be used to set a new
+     * console password — mirrors Supabase's own 1 h link validity so a session
+     * left behind in a browser does not stay usable indefinitely.
+     */
+    recoverySessionMaxAgeMinutes: Number(optional(process.env.RECOVERY_SESSION_MAX_AGE_MINUTES, '60')),
   },
 
   // --- developer conveniences (never enabled in production) ----------------
@@ -150,6 +210,19 @@ if (isProduction && config.storageDriver === 'supabase' && (!config.supabaseUrl 
     '[config] STORAGE_DRIVER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in production.'
   );
 }
+if (!['auto', 'supabase', 'smtp'].includes(config.passwordReset.channel)) {
+  throw new Error(
+    `[config] PASSWORD_RESET_CHANNEL must be "auto", "supabase" or "smtp", got "${config.passwordReset.channel}".`
+  );
+}
+if (config.passwordReset.channel === 'supabase' && (!config.supabaseUrl || !config.supabaseServiceRoleKey)) {
+  // Not fatal (the reset form reports delivery as unavailable), but loud.
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[config] PASSWORD_RESET_CHANNEL=supabase but SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set — ' +
+      'password reset emails cannot be sent.'
+  );
+}
 if (isProduction && config.storageDriver === 'local') {
   // Not an error (VM/container deploys may legitimately use disk storage), but
   // on serverless hosts this means uploads silently land on ephemeral disk.
@@ -171,6 +244,9 @@ export function configReport(): string[] {
     `force https: ${config.forceHttps}`,
     `allowed origins: ${config.frontendOrigins.join(', ')}`,
     `mail transport: ${config.mail.transport}`,
+    `password reset channel: ${config.passwordReset.channel}` +
+      (config.supabaseUrl && config.supabaseServiceRoleKey ? ' (supabase auth configured)' : ' (supabase auth not configured)'),
+    `reset links point to: ${config.mail.appBaseUrl}`,
     `reset link exposure: ${config.exposeResetLink ? 'DEV ONLY (enabled)' : 'disabled'}`,
   ];
 }

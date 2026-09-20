@@ -1,111 +1,142 @@
-# Fixing the "Failed to send password recovery" error
+# Admin password reset — how it works now and how to get the email
 
-The error you see:
+Supabase project: `kxirdoacrphluervussu` →
+https://supabase.com/dashboard/project/kxirdoacrphluervussu
+(URL `https://kxirdoacrphluervussu.supabase.co`; the `sb_publishable_…` key is
+a key, not part of the URL — an older copy of `supabase/README.md` had that
+wrong).
 
+## What was actually broken
+
+Three independent problems stacked on top of each other, which is why every
+earlier "fix" only moved the failure around:
+
+1. **Two password stores.** `/admin/login` checks `admin_users.password_hash`
+   in the API's Postgres. The first version of the reset pages used
+   `supabase.auth.resetPasswordForEmail` + `updateUser`, which changes the
+   password in Supabase `auth.users` — the link "worked", sign-in still failed.
+2. **No way to send mail in production.** The follow-up moved the reset to the
+   API's own token link, sent over SMTP — but Vercel never had `SMTP_HOST`, so
+   the page said "a link is on its way" and nothing was ever sent.
+3. **The primary admin could not be created in Supabase Auth.** Migration 0005
+   installed a `BEFORE INSERT` trigger on `auth.users` that inserts into
+   `profiles`/`admin_users`, both of which reference `auth.users(id)`. For
+   `brainchildgamesin@gmail.com` (and only that address) the insert hit a
+   foreign-key violation, which Supabase reports as
+   "Database error creating new user" / `unexpected_failure`. Reproduced
+   locally; fixed by `supabase/migrations/0006_harden_primary_admin_trigger.sql`.
+
+## What the code does now
+
+- `POST /api/auth/forgot-password` keeps the admin password where it is, and
+  uses **Supabase Auth only as the mail carrier**: for a real admin it makes
+  sure a confirmed Supabase user with that email exists (created with the
+  service-role key on first use), then asks Supabase to send its *Reset
+  Password* email with `redirect_to = <APP_BASE_URL>/admin/reset-password`.
+  Unknown addresses get the same response and never touch Supabase.
+- The email link comes back to `/admin/reset-password#…type=recovery`; the page
+  posts the Supabase recovery session to `POST /api/auth/reset-password`, which
+  verifies it **server-side** (`/auth/v1/user` with the service-role key, `amr`
+  must contain a `recovery` factor younger than 60 minutes, email must belong to
+  an active admin), rotates `admin_users.password_hash`, revokes all other
+  console sessions plus the Supabase session, and audits
+  `PASSWORD_RESET_COMPLETED`. Replays, password-login sessions, forged JWTs and
+  stale sessions are rejected (`400`).
+- No Supabase configured → the previous SMTP/console token link still works
+  (`PASSWORD_RESET_CHANNEL=smtp` forces it). Exactly one proof per request:
+  `token` *or* `supabaseAccessToken`.
+- Verified offline against a GoTrue stand-in:
+  `npm run reset-flow:test --prefix server` (29 checks) and
+  `npm run security:test --prefix server` (128–130 checks).
+
+## Checklist to receive the reset email at brainchildgamesin@gmail.com
+
+### A. Supabase dashboard (one time)
+
+1. **SQL Editor** → run `supabase/migrations/0006_harden_primary_admin_trigger.sql`
+   (safe to re-run; required if 0005 or `apply_now.sql` was ever applied).
+2. **Authentication → URL Configuration**
+   - Site URL: `https://www.brainchildapp.com`
+   - Redirect URLs: `https://www.brainchildapp.com/admin/reset-password`,
+     `http://localhost:3000/admin/reset-password`
+     (when `redirect_to` is not allow-listed Supabase silently sends the user
+     to the Site URL instead — the link "opens the homepage").
+3. **Email delivery — pick one:**
+   - *Built-in Supabase mailer*: delivers **only to members of the Supabase
+     organisation** and at most **2 emails per hour**. If your Supabase login
+     is `brainchildgamesin@gmail.com` you are already a member; otherwise
+     invite that address under **Organization → Team**.
+   - *Custom SMTP* (**Authentication → SMTP Settings**; Resend, Postmark, SES,
+     …): delivers to anyone; then raise **Authentication → Rate Limits → emails
+     per hour** (default 30 once SMTP is on).
+4. **Authentication → Emails → Reset Password template** must still contain
+   `{{ .ConfirmationURL }}`.
+
+### B. Vercel → Settings → Environment Variables (Production + Preview)
+
+| Variable | Value |
+| --- | --- |
+| `VITE_SUPABASE_URL` | `https://kxirdoacrphluervussu.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | the **anon / publishable** key |
+| `SUPABASE_URL` | `https://kxirdoacrphluervussu.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | the **service_role** key (server only — never `VITE_`) |
+| `SUPABASE_ANON_KEY` | same as `VITE_SUPABASE_ANON_KEY` (optional) |
+| `APP_BASE_URL` | `https://www.brainchildapp.com` |
+| `FRONTEND_ORIGIN` | `https://www.brainchildapp.com` |
+| `PASSWORD_RESET_CHANNEL` | `auto` (or omit) |
+| `STORAGE_DRIVER` | `supabase` |
+| `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `NODE_ENV=production` | as before |
+
+Redeploy after changing them (the `VITE_` pair is baked in at build time).
+The API's first log line must say
+`password reset channel: auto (supabase auth configured)` and
+`reset link exposure: disabled`.
+
+### C. Trigger it
+
+1. Open `https://www.brainchildapp.com/admin/forgot-password`, submit
+   `brainchildgamesin@gmail.com`.
+2. Check the inbox (and Spam/Promotions) for the Supabase **Reset Password**
+   email → click it → you land on `/admin/reset-password` with the form
+   unlocked → choose a password (12+ characters) → sign in at `/admin/login`.
+3. Console → **Activity** shows `PASSWORD_RESET_REQUESTED` (`delivered: true`)
+   and `PASSWORD_RESET_COMPLETED`.
+
+Locally the same works with `server/.env`; set `DEV_EXPOSE_RESET_LINK=false`
+there if you want the real email instead of the link being shown on the page.
+
+## If the email does not arrive
+
+Look at the API log (Vercel → Functions) for
+`Password reset email was not delivered` and read its `reason`:
+
+| `reason` | Meaning / fix |
+| --- | --- |
+| `rate_limited` (`over_email_send_rate_limit`) | Supabase's hourly email budget is spent (2/h on the built-in mailer). Wait an hour or configure custom SMTP. |
+| `provider_error` (`Error sending recovery email`) | Supabase could not hand the mail to its provider — with custom SMTP: wrong credentials/port; with the built-in mailer: the address is not a team member. Also check Supabase **Logs → Auth**. |
+| `create_user_failed:unexpected_failure` | The auth user could not be created — run migration **0006** (see §A.1). |
+| `create_user_failed:…` other | Service-role key wrong/rotated, or `SUPABASE_URL` is not this project. |
+| `network_error` | The API could not reach `*.supabase.co` (egress blocked / DNS). |
+| `emailDeliveryEnabled: false` in the response | Neither Supabase nor SMTP is configured on the server that answered. |
+
+No `PASSWORD_RESET_REQUESTED` entry at all → the address is not in
+`admin_users` on the database the deployed API uses. With `DATABASE_URL`
+pointed at that database, `npm run admin:reset-brainchild --prefix server`
+creates/repairs the primary admin row (and resets its password).
+
+## Getting in without any email
+
+The password lives in the API's database, so it can always be set directly:
+
+```bash
+# point DATABASE_URL at the deployed database first
+BRAINCHILD_ADMIN_PASSWORD='YourNewStrongPass123' npm run admin:set-password --prefix server
+# or restore the seeded default for the primary admin
+npm run admin:reset-brainchild --prefix server
 ```
-Failed to send password recovery: Failed to make POST request to
-"https://kxirdoacrphluervussu.supabase.co/auth/v1/recover".
-Check your project's Auth logs for more information.
-Error message: Unable to process request
-```
 
-**What it is:** Supabase tried to send the recovery email and its email
-delivery failed. `Unable to process request` is a generic 500 — every public
-report of this exact error traces to the project's **SMTP email settings**
-being broken (custom SMTP with bad credentials / blocked port, or the built-in
-email service switched off). It is **not** your code, not Vercel, not a missing
-account.
+Supabase → Authentication → Users → *Reset password* changes only the Supabase
+password and has **no effect** on the admin console.
 
-Your Supabase project ref: `kxirdoacrphluervussu`
-(https://supabase.com/dashboard/project/kxirdoacrphluervussu)
-
----
-
-## Step 1 — Get your password back RIGHT NOW (no email needed, ~1 minute)
-
-1. Open https://supabase.com/dashboard/project/kxirdoacrphluervussu
-2. Left sidebar → **Authentication → Users**
-3. Find your email (e.g. `brainchildgamesin@gmail.com`) and click it
-4. Click **Reset password** (top of the user page)
-5. Enter your new password and save. Done — you can sign in with it.
-
-This changes the password inside Supabase directly, so a broken email setup
-cannot block you.
-
-> ⚠️ If the account you're signing in with is the **admin console** account
-> (the site's `/admin/login`), its password lives in the `admin_users` table,
-> **not** in Supabase. For that one use the CLI instead:
->
-> ```bash
-> BRAINCHILD_ADMIN_PASSWORD=YourNewStrongPass123 npm run admin:set-password --prefix server
-> ```
->
-> (point `DATABASE_URL` at the production database first)
-
-## Step 2 — Fix email sending so "Forgot password" works again (~2 minutes)
-
-1. In the same project: **Project Settings → Auth → SMTP**
-   (some dashboards: `Settings → Auth → Email / SMTP`)
-2. **Turn OFF the custom SMTP provider** (uncheck "Use SMTP provider" /
-   clear the host/user/password fields) so Supabase uses its **built-in
-   email service** — that needs zero configuration.
-3. Save.
-4. If you *want* your own SMTP (SendGrid/Postmark/etc.), instead re-enter the
-   credentials carefully: no leading/trailing spaces, correct port
-   (`587` STARTTLS or `465` TLS), and verify the provider allows your IP.
-
-Then test: open your app → **Forgot password** → enter your email → check
-inbox **and Spam/Promotions**.
-
-To see what failed before and after: **Logs → Auth** — the 500 is logged
-there with the real internal reason (e.g. `SMTP authentication failed`,
-`connection refused`, `TLS handshake failed`).
-
-## Step 3 — Make sure reset links land on your site (~1 minute)
-
-The link inside the email is opened with `?token=…`. For it to be accepted:
-
-1. **Authentication → URL Configuration**
-2. **Site URL** = `https://www.brainchildapp.com`
-3. **Redirect URLs** — add:
-   - `https://www.brainchildapp.com/**`
-   - `https://brainchildapp.com/**`
-   - `http://localhost:3000/**` (local dev)
-4. Save.
-
-## Step 4 — About the site in THIS repository
-
-The Brainchild Games site in this repo **no longer uses Supabase for admin
-password reset at all** — `/admin/forgot-password` goes through the site's own
-API (`POST /api/auth/forgot-password`), so the Supabase 500 can never happen
-in it. To put that version live on Vercel:
-
-1. Push the latest `main` of this repo (or merge the open PR) so Vercel
-   redeploys. The currently deployed build is **older** than the code in this
-   repo — that's why you still see the Supabase error.
-2. In Vercel → Settings → Environment Variables (Production + Preview) make
-   sure these exist so the reset email actually goes out:
-
-   | Variable | Value |
-   | --- | --- |
-   | `APP_BASE_URL` | `https://www.brainchildapp.com` |
-   | `SMTP_HOST` / `SMTP_PORT` | e.g. `smtp.postmarkapp.com` / `587` |
-   | `SMTP_USER` / `SMTP_PASSWORD` | provider credentials |
-   | `MAIL_FROM` | `Brainchild Studio <no-reply@yourdomain>` |
-   | `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `FRONTEND_ORIGIN` | as before |
-
-   If SMTP isn't set, the page tells you explicitly instead of promising an
-   email that never arrives.
-
----
-
-### TL;DR
-
-1. **Now:** Supabase dashboard → Users → your email → **Reset password**.
-2. **Next:** Settings → Auth → **SMTP → use built-in email service** (or fix
-   custom SMTP), then test Forgot password and check Spam.
-3. **Then:** redeploy this repo's `main` to Vercel so the site stops calling
-   Supabase for admin resets at all.
-
-Deeper background: `supabase/README.md` → "Troubleshooting: 'Unable to
-process request' from Supabase Auth".
+Deeper background (GoTrue error strings, RLS, redirect handling):
+`supabase/README.md`.
